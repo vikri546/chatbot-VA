@@ -11,6 +11,7 @@ Koneksi menggunakan **pairing code** (tanpa scan QR).
 - 📲 **QR Code** — Buat QR code dari teks/link: `.qr https://google.com`
 - ⏰ **Reminder** — Set pengingat otomatis: `.ingatkan 30m Minum obat`
 - 🔊 **Text-to-Speech** — Ubah teks jadi voice note: `.tts Halo selamat pagi`
+- ⬇️ **Download Media** — Download video/audio dari YT, IG, TT, FB, Twitter/X
 - 📦 Nama paket stiker: **Copyright VA 2026**
 - 📋 **Menu** — Ketik `.menu` atau `.help`
 
@@ -20,10 +21,11 @@ Koneksi menggunakan **pairing code** (tanpa scan QR).
 
 ```bash
 pkg update && pkg upgrade -y
-pkg install nodejs git ffmpeg -y
+pkg install nodejs git ffmpeg python -y
+pip install yt-dlp
 ```
 
-> ⚠️ **ffmpeg wajib diinstall** untuk fitur GIF stiker (konversi video ke animated WebP).
+> ⚠️ **ffmpeg** wajib untuk GIF stiker, **yt-dlp** wajib untuk download media.
 
 ### 2. Clone Repository
 
@@ -69,6 +71,8 @@ node index.js
 | `.listreminder`              | Lihat daftar pengingat aktif                                   |
 | `.hapusreminder [id]`        | Batalkan pengingat                                             |
 | `.tts [teks]`                | Ubah teks jadi voice note (ElevenLabs custom voice)            |
+| `.dl [url]`                  | Download video dari YT, IG, TT, FB, Twitter/X                  |
+| `.mp3 [url]`                 | Download audio/musik dari link                                 |
 | `.menu` / `.help`            | Menampilkan daftar perintah                                    |
 
 ## ⚡ Setup Cepat (Opsional)
@@ -84,7 +88,7 @@ bash termux-setup.sh
 - Session tersimpan di folder `auth_info/` — jangan dihapus kecuali ingin login ulang
 - Jika bot terputus, otomatis akan reconnect
 - Jika terkena logout, hapus folder `auth_info/` lalu jalankan ulang
-- Butuh **Node.js 18+** dan **ffmpeg**
+- Butuh **Node.js 18+**, **ffmpeg**, dan **yt-dlp**
 
 ## 📄 Lisensi
 

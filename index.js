@@ -7,6 +7,7 @@ const { getWeather } = require('./lib/weather');
 const { generateQR } = require('./lib/qrcode');
 const { parseDuration, setReminder, cancelReminder, getReminders, formatRemaining } = require('./lib/reminder');
 const { textToSpeech } = require('./lib/tts');
+const { downloadMedia, detectPlatform, formatDuration } = require('./lib/downloader');
 
 // ══════════════════════════════════════════════
 //  WhatsApp Chatbot VA - Sticker Bot
@@ -374,6 +375,106 @@ async function handleMessage(sock, msg) {
         }
     }
 
+    // ═══ DOWNLOAD MEDIA (VIDEO) ═══
+    if (caption && caption.toLowerCase().startsWith('.dl')) {
+        const url = caption.slice(3).trim();
+
+        if (!url) {
+            await sock.sendMessage(jid, {
+                text: '❌ Masukkan URL!\n\n*Cara pakai:*\n.dl [url] → download video\n.mp3 [url] → download audio\n\n*Platform:* YouTube, Instagram,\nTikTok, Facebook, Twitter/X'
+            }, { quoted: msg });
+            return;
+        }
+
+        const platform = detectPlatform(url);
+        if (!platform) {
+            await sock.sendMessage(jid, {
+                text: '❌ URL tidak didukung!\n\n*Platform yang didukung:*\nYouTube, Instagram, TikTok,\nFacebook, Twitter/X'
+            }, { quoted: msg });
+            return;
+        }
+
+        console.log(`⬇️ Download video dari ${platform}: ${url.substring(0, 50)}...`);
+        await sock.sendMessage(jid, { react: { text: '⬇️', key: msg.key } });
+        await sock.sendMessage(jid, {
+            text: `⏳ Sedang mendownload video dari *${platform}*...\n_Harap tunggu, ini bisa memakan waktu._`
+        }, { quoted: msg });
+
+        try {
+            const result = await downloadMedia(url, 'video');
+            const ext = result.filename.split('.').pop().toLowerCase();
+
+            if (ext === 'mp4' || ext === 'webm' || ext === 'mkv') {
+                await sock.sendMessage(jid, {
+                    video: result.buffer,
+                    caption: `🎬 *${result.title}*\n⏱️ Durasi: ${formatDuration(result.duration)}\n📡 ${platform}\n\n_© Copyright VA 2026_`,
+                    mimetype: 'video/mp4'
+                }, { quoted: msg });
+            } else {
+                await sock.sendMessage(jid, {
+                    document: result.buffer,
+                    fileName: result.filename,
+                    mimetype: 'application/octet-stream',
+                    caption: `📥 *${result.title}*\n📡 ${platform}`
+                }, { quoted: msg });
+            }
+
+            await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
+            console.log(`✅ Video dari ${platform} dikirim ke ${jid}`);
+        } catch (err) {
+            console.log(`❌ Gagal download: ${err.message}`);
+            await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
+            await sock.sendMessage(jid, {
+                text: `❌ ${err.message}`
+            }, { quoted: msg });
+        }
+    }
+
+    // ═══ DOWNLOAD MEDIA (AUDIO/MP3) ═══
+    if (caption && caption.toLowerCase().startsWith('.mp3')) {
+        const url = caption.slice(4).trim();
+
+        if (!url) {
+            await sock.sendMessage(jid, {
+                text: '❌ Masukkan URL!\n\nContoh: *.mp3 https://youtube.com/watch?v=xxx*'
+            }, { quoted: msg });
+            return;
+        }
+
+        const platform = detectPlatform(url);
+        if (!platform) {
+            await sock.sendMessage(jid, {
+                text: '❌ URL tidak didukung!'
+            }, { quoted: msg });
+            return;
+        }
+
+        console.log(`🎵 Download audio dari ${platform}: ${url.substring(0, 50)}...`);
+        await sock.sendMessage(jid, { react: { text: '🎵', key: msg.key } });
+        await sock.sendMessage(jid, {
+            text: `⏳ Sedang mendownload audio dari *${platform}*...`
+        }, { quoted: msg });
+
+        try {
+            const result = await downloadMedia(url, 'audio');
+            await sock.sendMessage(jid, {
+                audio: result.buffer,
+                mimetype: 'audio/mpeg',
+                ptt: false, // kirim sebagai audio, bukan voice note
+                fileName: `${result.title}.mp3`
+            }, { quoted: msg });
+
+            await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
+            console.log(`✅ Audio dari ${platform} dikirim ke ${jid}`);
+        } catch (err) {
+            console.log(`❌ Gagal download audio: ${err.message}`);
+            await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
+            await sock.sendMessage(jid, {
+                text: `❌ ${err.message}`
+            }, { quoted: msg });
+        }
+    }
+
     // Menu / help command
     if (caption && (caption.toLowerCase() === '.menu' || caption.toLowerCase() === '.help')) {
         const menuText = `╔══════════════════════╗
@@ -401,7 +502,6 @@ async function handleMessage(sock, msg) {
 
 ⏰ *.ingatkan* [durasi] [pesan]
    Set pengingat otomatis.
-   Durasi: d=detik, m=menit, j=jam
    Contoh: .ingatkan 30m Minum obat
 
 📝 *.listreminder*
@@ -413,6 +513,13 @@ async function handleMessage(sock, msg) {
 🔊 *.tts* [teks]
    Ubah teks jadi voice note.
    Contoh: .tts Halo selamat pagi
+
+⬇️ *.dl* [url]
+   Download video dari link.
+   YT, IG, TT, FB, Twitter/X
+
+🎵 *.mp3* [url]
+   Download audio/musik dari link.
 
 ℹ️ *.menu* / *.help*
    Menampilkan menu ini.

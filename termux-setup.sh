@@ -12,9 +12,10 @@ echo ""
 echo "📦 Updating packages..."
 pkg update -y && pkg upgrade -y
 
-# 2. Install Node.js, Git & FFmpeg
-echo "📦 Installing Node.js, Git & FFmpeg..."
-pkg install nodejs git ffmpeg -y
+# 2. Install Node.js, Git, FFmpeg & yt-dlp
+echo "📦 Installing Node.js, Git, FFmpeg & yt-dlp..."
+pkg install nodejs git ffmpeg python -y
+pip install yt-dlp
 
 # 3. Install npm dependencies
 echo "📦 Installing npm dependencies..."
