@@ -4,6 +4,7 @@ const pino = require('pino');
 const readline = require('readline');
 const { createSticker, createGifSticker } = require('./lib/sticker');
 const { getWeather } = require('./lib/weather');
+const { generateQR } = require('./lib/qrcode');
 
 // ══════════════════════════════════════════════
 //  WhatsApp Chatbot VA - Sticker Bot
@@ -219,6 +220,37 @@ async function handleMessage(sock, msg) {
         }
     }
 
+    // ═══ QR CODE GENERATOR ═══
+    if (caption && caption.toLowerCase().startsWith('.qr')) {
+        const text = caption.slice(3).trim();
+
+        if (!text) {
+            await sock.sendMessage(jid, {
+                text: '❌ Masukkan teks atau URL!\n\nContoh: *.qr https://google.com*'
+            }, { quoted: msg });
+            return;
+        }
+
+        console.log(`📲 Permintaan QR code dari ${jid}`);
+        await sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } });
+
+        try {
+            const qrBuffer = await generateQR(text);
+            await sock.sendMessage(jid, {
+                image: qrBuffer,
+                caption: `📲 *QR Code*\n\n📝 *Isi:* ${text}\n\n_© Copyright VA 2026_`
+            }, { quoted: msg });
+            await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
+            console.log(`✅ QR code dikirim ke ${jid}`);
+        } catch (err) {
+            console.log(`❌ Gagal buat QR: ${err.message}`);
+            await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
+            await sock.sendMessage(jid, {
+                text: '❌ Gagal membuat QR code. Coba lagi.'
+            }, { quoted: msg });
+        }
+    }
+
     // Menu / help command
     if (caption && (caption.toLowerCase() === '.menu' || caption.toLowerCase() === '.help')) {
         const menuText = `╔══════════════════════╗
@@ -239,6 +271,10 @@ async function handleMessage(sock, msg) {
 🌤️ *.cuaca* [kota]
    Cek info cuaca realtime.
    Contoh: .cuaca Jakarta
+
+📲 *.qr* [teks/url]
+   Buat QR code dari teks atau link.
+   Contoh: .qr https://google.com
 
 ℹ️ *.menu* / *.help*
    Menampilkan menu ini.

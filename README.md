@@ -8,6 +8,7 @@ Koneksi menggunakan **pairing code** (tanpa scan QR).
 - 🖼️ **Buat Stiker** — Kirim gambar dengan caption `.stiker` atau `.sticker`
 - 🎬 **GIF Stiker** — Kirim video (maks 5 detik) dengan caption `.stiker` → stiker animasi
 - 🌤️ **Cuaca** — Cek info cuaca realtime: `.cuaca Jakarta`
+- 📲 **QR Code** — Buat QR code dari teks/link: `.qr https://google.com`
 - 📦 Nama paket stiker: **Copyright VA 2026**
 - 📋 **Menu** — Ketik `.menu` atau `.help`
 
@@ -61,6 +62,7 @@ node index.js
 | `.stiker` / `.sticker` | Kirim **gambar** dengan caption ini → stiker                   |
 | `.stiker` / `.sticker` | Kirim **video** (maks 5 detik) dengan caption ini → GIF stiker |
 | `.cuaca [kota]`        | Cek info cuaca realtime (contoh: `.cuaca Jakarta`)             |
+| `.qr [teks/url]`       | Buat QR code dari teks atau link                               |
 | `.menu` / `.help`      | Menampilkan daftar perintah                                    |
 
 ## ⚡ Setup Cepat (Opsional)
