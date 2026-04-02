@@ -3,6 +3,7 @@ const { useMultiFileAuthState, DisconnectReason, downloadMediaMessage } = requir
 const pino = require('pino');
 const readline = require('readline');
 const { createSticker, createGifSticker } = require('./lib/sticker');
+const { getWeather } = require('./lib/weather');
 
 // ══════════════════════════════════════════════
 //  WhatsApp Chatbot VA - Sticker Bot
@@ -190,6 +191,34 @@ async function handleMessage(sock, msg) {
         }
     }
 
+    // ═══ CUACA ═══
+    if (caption && caption.toLowerCase().startsWith('.cuaca')) {
+        const city = caption.slice(6).trim();
+
+        if (!city) {
+            await sock.sendMessage(jid, {
+                text: '❌ Masukkan nama kota!\n\nContoh: *.cuaca Jakarta*'
+            }, { quoted: msg });
+            return;
+        }
+
+        console.log(`🌤️ Permintaan cuaca "${city}" dari ${jid}`);
+        await sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } });
+
+        try {
+            const result = await getWeather(city);
+            await sock.sendMessage(jid, { text: result }, { quoted: msg });
+            await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
+            console.log(`✅ Info cuaca "${city}" dikirim ke ${jid}`);
+        } catch (err) {
+            console.log(`❌ Gagal ambil cuaca: ${err.message}`);
+            await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
+            await sock.sendMessage(jid, {
+                text: `❌ ${err.message}`
+            }, { quoted: msg });
+        }
+    }
+
     // Menu / help command
     if (caption && (caption.toLowerCase() === '.menu' || caption.toLowerCase() === '.help')) {
         const menuText = `╔══════════════════════╗
@@ -206,6 +235,10 @@ async function handleMessage(sock, msg) {
    Kirim *video* (maks 5 detik)
    dengan caption ini untuk dijadikan
    GIF stiker animasi.
+
+🌤️ *.cuaca* [kota]
+   Cek info cuaca realtime.
+   Contoh: .cuaca Jakarta
 
 ℹ️ *.menu* / *.help*
    Menampilkan menu ini.
