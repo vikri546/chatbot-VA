@@ -2,6 +2,8 @@ const makeWASocket = require('@whiskeysockets/baileys').default;
 const { useMultiFileAuthState, DisconnectReason, downloadMediaMessage } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const readline = require('readline');
+const fs = require('fs');
+const path = require('path');
 const { createSticker, createGifSticker } = require('./lib/sticker');
 const { getWeather } = require('./lib/weather');
 const { generateQR } = require('./lib/qrcode');
@@ -15,7 +17,51 @@ const { downloadMedia, detectPlatform, formatDuration } = require('./lib/downloa
 //  Optimized for Termux
 // ══════════════════════════════════════════════
 
-const logger = pino({ level: 'silent' }); // silent agar terminal bersih
+const logger = pino({ level: 'silent' });
+const AUTH_DIR = 'auth_info';
+const SESSION_FILE = path.join(AUTH_DIR, '.session_created');
+const SESSION_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 hari dalam ms
+
+/**
+ * Cek apakah session sudah expired (lebih dari 30 hari).
+ * Jika expired, hapus folder auth_info agar harus pairing ulang.
+ */
+function checkSessionExpiry() {
+    if (!fs.existsSync(SESSION_FILE)) return; // belum pernah login
+
+    try {
+        const created = parseInt(fs.readFileSync(SESSION_FILE, 'utf-8').trim());
+        const age = Date.now() - created;
+        const daysLeft = Math.ceil((SESSION_MAX_AGE - age) / (24 * 60 * 60 * 1000));
+
+        if (age >= SESSION_MAX_AGE) {
+            console.log('⏰ Session sudah expired (lebih dari 30 hari).');
+            console.log('🗑️  Menghapus session lama...\n');
+
+            // Hapus seluruh folder auth_info
+            fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+            console.log('✅ Session lama dihapus. Silakan pairing ulang.\n');
+        } else {
+            console.log(`🔐 Session aktif (sisa ${daysLeft} hari)\n`);
+        }
+    } catch (_) {
+        // Jika file rusak, abaikan
+    }
+}
+
+/**
+ * Simpan timestamp saat pertama kali login berhasil.
+ */
+function saveSessionTimestamp() {
+    if (!fs.existsSync(AUTH_DIR)) {
+        fs.mkdirSync(AUTH_DIR, { recursive: true });
+    }
+    // Hanya simpan jika belum ada (pertama kali)
+    if (!fs.existsSync(SESSION_FILE)) {
+        fs.writeFileSync(SESSION_FILE, String(Date.now()));
+        console.log('🔐 Timestamp session disimpan (berlaku 30 hari)\n');
+    }
+}
 
 /**
  * Minta input dari user di terminal
@@ -41,8 +87,11 @@ async function startBot() {
     console.log('  WhatsApp Chatbot VA - Sticker Bot');
     console.log('══════════════════════════════════════\n');
 
+    // 0. Cek apakah session sudah expired
+    checkSessionExpiry();
+
     // 1. Load atau buat session baru
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
     // 2. Buat koneksi WhatsApp
     const sock = makeWASocket({
@@ -102,6 +151,9 @@ async function startBot() {
         }
 
         if (connection === 'open') {
+            // Simpan timestamp session saat pertama kali connect
+            saveSessionTimestamp();
+
             console.log('✅ Terhubung ke WhatsApp!\n');
             console.log('📌 Cara pakai:');
             console.log('   🖼️  Kirim gambar + caption .stiker → stiker biasa');
