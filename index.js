@@ -6,6 +6,7 @@ const { createSticker, createGifSticker } = require('./lib/sticker');
 const { getWeather } = require('./lib/weather');
 const { generateQR } = require('./lib/qrcode');
 const { parseDuration, setReminder, cancelReminder, getReminders, formatRemaining } = require('./lib/reminder');
+const { textToSpeech } = require('./lib/tts');
 
 // ══════════════════════════════════════════════
 //  WhatsApp Chatbot VA - Sticker Bot
@@ -341,6 +342,38 @@ async function handleMessage(sock, msg) {
         }
     }
 
+    // ═══ TEXT TO SPEECH (ElevenLabs) ═══
+    if (caption && caption.toLowerCase().startsWith('.tts')) {
+        const ttsText = caption.slice(4).trim();
+
+        if (!ttsText) {
+            await sock.sendMessage(jid, {
+                text: '❌ Masukkan teks!\n\n*Cara pakai:*\n.tts Halo selamat pagi\n.tts Apa kabar hari ini?\n\n_Maks 1000 karakter_'
+            }, { quoted: msg });
+            return;
+        }
+
+        console.log(`🔊 Permintaan TTS dari ${jid}: "${ttsText.substring(0, 50)}..."`);
+        await sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } });
+
+        try {
+            const audioBuffer = await textToSpeech(ttsText);
+            await sock.sendMessage(jid, {
+                audio: audioBuffer,
+                mimetype: 'audio/mpeg',
+                ptt: true
+            }, { quoted: msg });
+            await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
+            console.log(`✅ TTS berhasil dikirim ke ${jid}`);
+        } catch (err) {
+            console.log(`❌ Gagal TTS: ${err.message}`);
+            await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
+            await sock.sendMessage(jid, {
+                text: `❌ ${err.message}`
+            }, { quoted: msg });
+        }
+    }
+
     // Menu / help command
     if (caption && (caption.toLowerCase() === '.menu' || caption.toLowerCase() === '.help')) {
         const menuText = `╔══════════════════════╗
@@ -376,6 +409,10 @@ async function handleMessage(sock, msg) {
 
 ❌ *.hapusreminder* [id]
    Batalkan pengingat.
+
+🔊 *.tts* [teks]
+   Ubah teks jadi voice note.
+   Contoh: .tts Halo selamat pagi
 
 ℹ️ *.menu* / *.help*
    Menampilkan menu ini.

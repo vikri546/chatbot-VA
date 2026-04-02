@@ -10,6 +10,7 @@ Koneksi menggunakan **pairing code** (tanpa scan QR).
 - 🌤️ **Cuaca** — Cek info cuaca realtime: `.cuaca Jakarta`
 - 📲 **QR Code** — Buat QR code dari teks/link: `.qr https://google.com`
 - ⏰ **Reminder** — Set pengingat otomatis: `.ingatkan 30m Minum obat`
+- 🔊 **Text-to-Speech** — Ubah teks jadi voice note: `.tts Halo selamat pagi`
 - 📦 Nama paket stiker: **Copyright VA 2026**
 - 📋 **Menu** — Ketik `.menu` atau `.help`
 
@@ -67,6 +68,7 @@ node index.js
 | `.ingatkan [durasi] [pesan]` | Set pengingat (d=detik, m=menit, j=jam)                        |
 | `.listreminder`              | Lihat daftar pengingat aktif                                   |
 | `.hapusreminder [id]`        | Batalkan pengingat                                             |
+| `.tts [teks]`                | Ubah teks jadi voice note (ElevenLabs custom voice)            |
 | `.menu` / `.help`            | Menampilkan daftar perintah                                    |
 
 ## ⚡ Setup Cepat (Opsional)
