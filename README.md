@@ -9,6 +9,7 @@ Koneksi menggunakan **pairing code** (tanpa scan QR).
 - 🎬 **GIF Stiker** — Kirim video (maks 5 detik) dengan caption `.stiker` → stiker animasi
 - 🌤️ **Cuaca** — Cek info cuaca realtime: `.cuaca Jakarta`
 - 📲 **QR Code** — Buat QR code dari teks/link: `.qr https://google.com`
+- ⏰ **Reminder** — Set pengingat otomatis: `.ingatkan 30m Minum obat`
 - 📦 Nama paket stiker: **Copyright VA 2026**
 - 📋 **Menu** — Ketik `.menu` atau `.help`
 
@@ -57,13 +58,16 @@ node index.js
 
 ## 🎨 Cara Pakai
 
-| Perintah               | Fungsi                                                         |
-| ---------------------- | -------------------------------------------------------------- |
-| `.stiker` / `.sticker` | Kirim **gambar** dengan caption ini → stiker                   |
-| `.stiker` / `.sticker` | Kirim **video** (maks 5 detik) dengan caption ini → GIF stiker |
-| `.cuaca [kota]`        | Cek info cuaca realtime (contoh: `.cuaca Jakarta`)             |
-| `.qr [teks/url]`       | Buat QR code dari teks atau link                               |
-| `.menu` / `.help`      | Menampilkan daftar perintah                                    |
+| Perintah                     | Fungsi                                                         |
+| ---------------------------- | -------------------------------------------------------------- |
+| `.stiker` / `.sticker`       | Kirim **gambar** dengan caption ini → stiker                   |
+| `.stiker` / `.sticker`       | Kirim **video** (maks 5 detik) dengan caption ini → GIF stiker |
+| `.cuaca [kota]`              | Cek info cuaca realtime (contoh: `.cuaca Jakarta`)             |
+| `.qr [teks/url]`             | Buat QR code dari teks atau link                               |
+| `.ingatkan [durasi] [pesan]` | Set pengingat (d=detik, m=menit, j=jam)                        |
+| `.listreminder`              | Lihat daftar pengingat aktif                                   |
+| `.hapusreminder [id]`        | Batalkan pengingat                                             |
+| `.menu` / `.help`            | Menampilkan daftar perintah                                    |
 
 ## ⚡ Setup Cepat (Opsional)
 

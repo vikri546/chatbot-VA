@@ -5,6 +5,7 @@ const readline = require('readline');
 const { createSticker, createGifSticker } = require('./lib/sticker');
 const { getWeather } = require('./lib/weather');
 const { generateQR } = require('./lib/qrcode');
+const { parseDuration, setReminder, cancelReminder, getReminders, formatRemaining } = require('./lib/reminder');
 
 // ══════════════════════════════════════════════
 //  WhatsApp Chatbot VA - Sticker Bot
@@ -251,6 +252,95 @@ async function handleMessage(sock, msg) {
         }
     }
 
+    // ═══ REMINDER / PENGINGAT ═══
+    if (caption && (caption.toLowerCase().startsWith('.ingatkan') || caption.toLowerCase().startsWith('.reminder'))) {
+        const prefix = caption.toLowerCase().startsWith('.ingatkan') ? '.ingatkan' : '.reminder';
+        const args = caption.slice(prefix.length).trim();
+        const spaceIdx = args.indexOf(' ');
+
+        if (!args || spaceIdx === -1) {
+            await sock.sendMessage(jid, {
+                text: `❌ Format salah!\n\n*Cara pakai:*\n.ingatkan [durasi] [pesan]\n\n*Contoh:*\n.ingatkan 30m Minum obat\n.ingatkan 2j Meeting kantor\n.ingatkan 10d Cek oven\n\n*Durasi:* d=detik, m=menit, j=jam`
+            }, { quoted: msg });
+            return;
+        }
+
+        const durationStr = args.slice(0, spaceIdx);
+        const reminderText = args.slice(spaceIdx + 1).trim();
+        const parsed = parseDuration(durationStr);
+
+        if (!parsed) {
+            await sock.sendMessage(jid, {
+                text: '❌ Durasi tidak valid!\n\nGunakan format: *30d* (detik), *30m* (menit), *2j* (jam)\nMaksimal 24 jam.'
+            }, { quoted: msg });
+            return;
+        }
+
+        if (!reminderText) {
+            await sock.sendMessage(jid, {
+                text: '❌ Masukkan pesan pengingat!\n\nContoh: .ingatkan 30m *Minum obat*'
+            }, { quoted: msg });
+            return;
+        }
+
+        const id = setReminder(jid, parsed.ms, reminderText, async (targetJid, text, remId) => {
+            await sock.sendMessage(targetJid, {
+                text: `⏰ *PENGINGAT!*\n\n📝 ${text}\n\n_Reminder #${remId} — © Copyright VA 2026_`
+            });
+            console.log(`⏰ Reminder #${remId} terkirim ke ${targetJid}`);
+        });
+
+        await sock.sendMessage(jid, {
+            text: `✅ Pengingat berhasil diset!\n\n⏰ *ID:* #${id}\n📝 *Pesan:* ${reminderText}\n⏱️ *Dalam:* ${parsed.label}\n\n_Ketik .listreminder untuk melihat daftar_\n_Ketik .hapusreminder ${id} untuk membatalkan_`
+        }, { quoted: msg });
+
+        console.log(`⏰ Reminder #${id} diset oleh ${jid}: "${reminderText}" dalam ${parsed.label}`);
+    }
+
+    // ═══ LIST REMINDER ═══
+    if (caption && caption.toLowerCase() === '.listreminder') {
+        const reminders = getReminders(jid);
+
+        if (reminders.length === 0) {
+            await sock.sendMessage(jid, {
+                text: '📝 Tidak ada pengingat aktif.'
+            }, { quoted: msg });
+            return;
+        }
+
+        let listText = `⏰ *Daftar Pengingat Aktif:*\n\n`;
+        for (const r of reminders) {
+            listText += `🔹 *#${r.id}* — ${r.text}\n   ⏱️ Sisa: ${formatRemaining(r.remainingMs)}\n\n`;
+        }
+        listText += `_Ketik .hapusreminder [id] untuk membatalkan_`;
+
+        await sock.sendMessage(jid, { text: listText }, { quoted: msg });
+    }
+
+    // ═══ HAPUS REMINDER ═══
+    if (caption && caption.toLowerCase().startsWith('.hapusreminder')) {
+        const idStr = caption.slice(14).trim();
+        const id = parseInt(idStr);
+
+        if (!idStr || isNaN(id)) {
+            await sock.sendMessage(jid, {
+                text: '❌ Masukkan ID reminder!\n\nContoh: *.hapusreminder 1*\nKetik *.listreminder* untuk melihat daftar.'
+            }, { quoted: msg });
+            return;
+        }
+
+        const success = cancelReminder(id);
+        if (success) {
+            await sock.sendMessage(jid, {
+                text: `✅ Pengingat *#${id}* berhasil dibatalkan.`
+            }, { quoted: msg });
+        } else {
+            await sock.sendMessage(jid, {
+                text: `❌ Pengingat *#${id}* tidak ditemukan atau sudah selesai.`
+            }, { quoted: msg });
+        }
+    }
+
     // Menu / help command
     if (caption && (caption.toLowerCase() === '.menu' || caption.toLowerCase() === '.help')) {
         const menuText = `╔══════════════════════╗
@@ -275,6 +365,17 @@ async function handleMessage(sock, msg) {
 📲 *.qr* [teks/url]
    Buat QR code dari teks atau link.
    Contoh: .qr https://google.com
+
+⏰ *.ingatkan* [durasi] [pesan]
+   Set pengingat otomatis.
+   Durasi: d=detik, m=menit, j=jam
+   Contoh: .ingatkan 30m Minum obat
+
+📝 *.listreminder*
+   Lihat daftar pengingat aktif.
+
+❌ *.hapusreminder* [id]
+   Batalkan pengingat.
 
 ℹ️ *.menu* / *.help*
    Menampilkan menu ini.
