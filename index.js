@@ -10,6 +10,7 @@ const { generateQR } = require('./lib/qrcode');
 const { parseDuration, setReminder, cancelReminder, getReminders, formatRemaining } = require('./lib/reminder');
 const { textToSpeech } = require('./lib/tts');
 const { downloadMedia, detectPlatform, formatDuration } = require('./lib/downloader');
+const { chat: geminiChat, resetChat: geminiReset } = require('./lib/gemini');
 
 // ══════════════════════════════════════════════
 //  WhatsApp Chatbot VA - Sticker Bot
@@ -527,6 +528,42 @@ async function handleMessage(sock, msg) {
         }
     }
 
+    // ═══ AI CHAT (Cappie / Gemini) ═══
+    if (caption && caption.toLowerCase().startsWith('.ai')) {
+        const userMsg = caption.slice(3).trim();
+
+        if (!userMsg) {
+            await sock.sendMessage(jid, {
+                text: '❌ Tulis pesannya dong~\n\nContoh: *.ai Halo Cappie!*\n\nKetik *.resetai* untuk reset percakapan.'
+            }, { quoted: msg });
+            return;
+        }
+
+        console.log(`🤖 AI chat dari ${jid}: "${userMsg.substring(0, 50)}..."`);
+        await sock.sendMessage(jid, { react: { text: '💋', key: msg.key } });
+
+        try {
+            const reply = await geminiChat(jid, userMsg);
+            await sock.sendMessage(jid, { text: reply }, { quoted: msg });
+            await sock.sendMessage(jid, { react: { text: '💕', key: msg.key } });
+            console.log(`✅ AI reply dikirim ke ${jid}`);
+        } catch (err) {
+            console.log(`❌ Gagal AI: ${err.message}`);
+            await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
+            await sock.sendMessage(jid, {
+                text: `❌ ${err.message}`
+            }, { quoted: msg });
+        }
+    }
+
+    // ═══ RESET AI CHAT ═══
+    if (caption && caption.toLowerCase() === '.resetai') {
+        geminiReset(jid);
+        await sock.sendMessage(jid, {
+            text: '✅ Riwayat chat AI direset~ Cappie sudah lupa semuanya! (≧◡≦)'
+        }, { quoted: msg });
+    }
+
     // Menu / help command
     if (caption && (caption.toLowerCase() === '.menu' || caption.toLowerCase() === '.help')) {
         const menuText = `╔══════════════════════╗
@@ -573,6 +610,14 @@ async function handleMessage(sock, msg) {
 🎵 *.mp3* [url]
    Download audio/musik dari link.
 
+💋 *Cappie AI* (auto-reply)
+   Kirim teks apapun tanpa prefix,
+   Cappie akan jawab otomatis~
+   Atau pakai: .ai [pesan]
+
+🔄 *.resetai*
+   Reset riwayat chat AI.
+
 ℹ️ *.menu* / *.help*
    Menampilkan menu ini.
 
@@ -581,6 +626,25 @@ async function handleMessage(sock, msg) {
 _© Copyright VA 2026_`;
 
         await sock.sendMessage(jid, { text: menuText }, { quoted: msg });
+    }
+
+    // ═══ FALLBACK: SEMUA TEKS LAIN → CAPPIE AI ═══
+    // Jika pesan berupa teks biasa yang bukan command, kirim ke AI
+    if (caption && !caption.startsWith('.') && messageType !== 'imageMessage' && messageType !== 'videoMessage') {
+        console.log(`💋 AI chat (auto) dari ${jid}: "${caption.substring(0, 50)}..."`);
+        await sock.sendMessage(jid, { react: { text: '💋', key: msg.key } });
+
+        try {
+            const reply = await geminiChat(jid, caption);
+            await sock.sendMessage(jid, { text: reply }, { quoted: msg });
+            await sock.sendMessage(jid, { react: { text: '💕', key: msg.key } });
+        } catch (err) {
+            console.log(`❌ Gagal AI: ${err.message}`);
+            await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
+            await sock.sendMessage(jid, {
+                text: `❌ ${err.message}`
+            }, { quoted: msg });
+        }
     }
 }
 

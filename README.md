@@ -12,6 +12,7 @@ Koneksi menggunakan **pairing code** (tanpa scan QR).
 - ⏰ **Reminder** — Set pengingat otomatis: `.ingatkan 30m Minum obat`
 - 🔊 **Text-to-Speech** — Ubah teks jadi voice note: `.tts Halo selamat pagi`
 - ⬇️ **Download Media** — Download video/audio dari YT, IG, TT, FB, Twitter/X
+- 💋 **AI Chat (Cappie)** — Chat sama AI nakal: `.ai Halo Cappie!`
 - 📦 Nama paket stiker: **Copyright VA 2026**
 - 📋 **Menu** — Ketik `.menu` atau `.help`
 
@@ -73,6 +74,8 @@ node index.js
 | `.tts [teks]`                | Ubah teks jadi voice note (ElevenLabs custom voice)            |
 | `.dl [url]`                  | Download video dari YT, IG, TT, FB, Twitter/X                  |
 | `.mp3 [url]`                 | Download audio/musik dari link                                 |
+| `.ai [pesan]`                | Chat sama Cappie ~ AI nakal (Gemini)                           |
+| `.resetai`                   | Reset riwayat chat AI                                          |
 | `.menu` / `.help`            | Menampilkan daftar perintah                                    |
 
 ## ⚡ Setup Cepat (Opsional)
