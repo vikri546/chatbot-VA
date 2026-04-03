@@ -98,17 +98,41 @@ async function startBot() {
     const sock = makeWASocket({
         auth: state,
         logger: logger,
-        printQRInTerminal: false,
-        browser: ['Chatbot VA', 'Chrome', '1.0.0'],
-        connectTimeoutMs: 60000,        // timeout koneksi 60 detik
-        defaultQueryTimeoutMs: 60000,   // timeout query 60 detik
-        retryRequestDelayMs: 2000       // delay antar retry
+        printQRInTerminal: false, // WAJIB false untuk pairing code
+        browser: ['Chatbot VA', 'Chrome', '1.0.0']
     });
 
-    // 3. Simpan credentials saat update (HARUS sebelum pairing)
+    // 3. Jika belum terdaftar, minta pairing code
+    if (!sock.authState.creds.registered) {
+        console.log('📱 Belum terhubung ke WhatsApp.\n');
+
+        const phoneNumber = await askQuestion('Masukkan nomor telepon (contoh: 6281234567890): ');
+
+        // Bersihkan nomor dari karakter yang tidak perlu
+        const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
+
+        if (!cleanNumber || cleanNumber.length < 10) {
+            console.log('❌ Nomor telepon tidak valid!');
+            process.exit(1);
+        }
+
+        // Tunggu sebentar sebelum request pairing code
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        const code = await sock.requestPairingCode(cleanNumber);
+        console.log(`\n🔑 Pairing Code: ${code}`);
+        console.log('\n📋 Cara memasukkan kode:');
+        console.log('   1. Buka WhatsApp di HP');
+        console.log('   2. Buka Settings > Linked Devices');
+        console.log('   3. Tap "Link a Device"');
+        console.log('   4. Tap "Link with phone number instead"');
+        console.log('   5. Masukkan kode di atas\n');
+    }
+
+    // 4. Simpan credentials saat update
     sock.ev.on('creds.update', saveCreds);
 
-    // 4. Handle koneksi (HARUS sebelum pairing agar reconnect bisa jalan)
+    // 5. Handle koneksi
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect } = update;
 
@@ -119,8 +143,8 @@ async function startBot() {
             console.log(`\n⚠️  Koneksi terputus (code: ${statusCode})`);
 
             if (shouldReconnect) {
-                console.log('🔄 Mencoba reconnect dalam 3 detik...\n');
-                setTimeout(() => startBot(), 3000);
+                console.log('🔄 Mencoba reconnect...\n');
+                startBot();
             } else {
                 console.log('❌ Logged out. Hapus folder auth_info/ dan jalankan ulang.');
                 process.exit(0);
@@ -128,6 +152,7 @@ async function startBot() {
         }
 
         if (connection === 'open') {
+            // Simpan timestamp session saat pertama kali connect
             saveSessionTimestamp();
 
             console.log('✅ Terhubung ke WhatsApp!\n');
@@ -137,51 +162,6 @@ async function startBot() {
             console.log('⏳ Menunggu pesan masuk...\n');
         }
     });
-
-    // 5. Jika belum terdaftar, minta pairing code
-    if (!sock.authState.creds.registered) {
-        console.log('📱 Belum terhubung ke WhatsApp.\n');
-
-        const phoneNumber = await askQuestion('Masukkan nomor telepon (contoh: 6281234567890): ');
-
-        const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
-
-        if (!cleanNumber || cleanNumber.length < 10) {
-            console.log('❌ Nomor telepon tidak valid!');
-            process.exit(1);
-        }
-
-        // Tunggu koneksi WebSocket stabil sebelum request pairing code
-        console.log('\n⏳ Menghubungkan ke server WhatsApp...');
-        await new Promise(resolve => setTimeout(resolve, 5000));
-
-        // Coba request pairing code dengan retry
-        let code = null;
-        for (let attempt = 1; attempt <= 3; attempt++) {
-            try {
-                code = await sock.requestPairingCode(cleanNumber);
-                break; // berhasil, keluar loop
-            } catch (err) {
-                console.log(`⚠️  Percobaan ${attempt}/3 gagal: ${err.message}`);
-                if (attempt < 3) {
-                    console.log('🔄 Mencoba ulang dalam 5 detik...\n');
-                    await new Promise(resolve => setTimeout(resolve, 5000));
-                } else {
-                    console.log('\n❌ Gagal mendapatkan pairing code setelah 3 percobaan.');
-                    console.log('💡 Tips: Pastikan koneksi internet stabil, lalu jalankan ulang.\n');
-                    process.exit(1);
-                }
-            }
-        }
-
-        console.log(`\n🔑 Pairing Code: ${code}`);
-        console.log('\n📋 Cara memasukkan kode:');
-        console.log('   1. Buka WhatsApp di HP');
-        console.log('   2. Buka Settings > Linked Devices');
-        console.log('   3. Tap "Link a Device"');
-        console.log('   4. Tap "Link with phone number instead"');
-        console.log('   5. Masukkan kode di atas\n');
-    }
 
     // 6. Handle pesan masuk
     sock.ev.on('messages.upsert', async ({ messages }) => {
