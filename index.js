@@ -28,6 +28,10 @@ const AUTH_DIR = 'auth_info';
 const SESSION_FILE = path.join(AUTH_DIR, '.session_created');
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 hari dalam ms
 
+// Mode user: 'bot' = chat dengan bot, 'author' = langsung ke pemilik (bot diam)
+const userMode = new Map();
+const waitingForSelection = new Map();
+
 function checkSessionExpiry() {
     if (!fs.existsSync(SESSION_FILE)) return;
 
@@ -137,6 +141,60 @@ async function startBot() {
                 if (msg.key.remoteJid === 'status@broadcast') continue;
                 if (!msg.message) continue;
 
+                const jid = msg.key.remoteJid;
+
+                // ═══ ABAIKAN GRUP — hanya chat pribadi ═══
+                if (jid.endsWith('@g.us')) continue;
+
+                const caption = getCaption(msg);
+
+                // ═══ PERINTAH .va — tampilkan pilihan mode ═══
+                if (caption && caption.toLowerCase() === '.va') {
+                    waitingForSelection.set(jid, true);
+                    await sendModeSelection(sock, jid, msg);
+                    continue;
+                }
+
+                // ═══ CEK JIKA USER SEDANG MEMILIH MODE ═══
+                if (waitingForSelection.get(jid)) {
+                    const choice = caption?.trim();
+
+                    if (choice === '1') {
+                        userMode.set(jid, 'bot');
+                        waitingForSelection.delete(jid);
+                        await sock.sendMessage(jid, {
+                            text: '🤖 *Mode Bot aktif!*\n\nSemua fitur bot siap digunakan.\nKetik *.menu* untuk melihat daftar perintah.\nKetik *.va* untuk ganti mode.'
+                        }, { quoted: msg });
+                        continue;
+                    } else if (choice === '2') {
+                        userMode.set(jid, 'author');
+                        waitingForSelection.delete(jid);
+                        await sock.sendMessage(jid, {
+                            text: '👤 *Mode Author aktif!*\n\nPesan kamu akan langsung dibaca oleh pemilik.\nBot tidak akan merespon.\nKetik *.va* untuk ganti mode.'
+                        }, { quoted: msg });
+                        continue;
+                    } else {
+                        // Input tidak valid, tampilkan ulang
+                        await sock.sendMessage(jid, {
+                            text: '❌ Pilihan tidak valid. Balas dengan *1* atau *2*.'
+                        }, { quoted: msg });
+                        continue;
+                    }
+                }
+
+                // ═══ USER BARU — belum pernah memilih mode ═══
+                if (!userMode.has(jid)) {
+                    waitingForSelection.set(jid, true);
+                    await sendModeSelection(sock, jid, msg);
+                    continue;
+                }
+
+                // ═══ MODE AUTHOR — bot diam, tidak merespon ═══
+                if (userMode.get(jid) === 'author') {
+                    continue;
+                }
+
+                // ═══ MODE BOT — proses pesan seperti biasa ═══
                 await handleMessage(sock, msg);
             } catch (err) {
                 console.log(`❌ Error handling pesan: ${err.message}`);
@@ -168,6 +226,32 @@ async function startBot() {
             }
         }, 3000); 
     }
+}
+
+/**
+ * Kirim pesan pilihan mode (Bot / Author)
+ */
+async function sendModeSelection(sock, jid, msg) {
+    const selectionText = `╔══════════════════════╗
+║   *CHATBOT VA*  🤖   ║
+╚══════════════════════╝
+
+Hai! Selamat datang~ 👋
+Silakan pilih mode chat:
+
+*1* 🤖 *Chat dengan Bot*
+   Gunakan semua fitur bot
+   (stiker, AI, TTS, download, dll)
+
+*2* 👤 *Chat dengan Author*
+   Pesan langsung ke pemilik
+   (bot tidak akan merespon)
+
+─────────────────────
+📝 Balas dengan angka *1* atau *2*
+💡 Ketik *.va* kapan saja untuk ganti mode`;
+
+    await sock.sendMessage(jid, { text: selectionText }, { quoted: msg });
 }
 
 /**
