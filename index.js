@@ -414,7 +414,7 @@ async function handleMessage(sock, msg) {
             const audioBuffer = await textToSpeech(ttsText);
             await sock.sendMessage(jid, {
                 audio: audioBuffer,
-                mimetype: 'audio/mpeg',
+                mimetype: 'audio/ogg; codecs=opus',
                 ptt: true
             }, { quoted: msg });
             await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
