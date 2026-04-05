@@ -17,6 +17,7 @@ const { parseDuration, setReminder, cancelReminder, getReminders, formatRemainin
 const { textToSpeech } = require('./lib/tts');
 const { downloadMedia, detectPlatform, formatDuration } = require('./lib/downloader');
 const { chat: geminiChat, resetChat: geminiReset } = require('./lib/gemini');
+const log = require('./lib/logger');
 
 // ══════════════════════════════════════════════
 //  WhatsApp Chatbot VA - Mode Nomor HP
@@ -36,9 +37,9 @@ function checkSessionExpiry() {
         const age = Date.now() - created;
 
         if (age >= SESSION_MAX_AGE) {
-            console.log('⏰ Session sudah expired (lebih dari 30 hari).');
+            log.warn('Session expired (lebih dari 30 hari)');
             fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-            console.log('✅ Session lama dihapus. Silakan tautkan ulang.\n');
+            log.sys('Session lama dihapus. Silakan pairing ulang.');
         }
     } catch (_) {}
 }
@@ -62,9 +63,11 @@ function askQuestion(query) {
 }
 
 async function startBot() {
-    console.log('══════════════════════════════════════');
-    console.log('  WhatsApp Chatbot VA - Pairing Code');
-    console.log('══════════════════════════════════════\n');
+    console.log('');
+    console.log('  ┌─────────────────────────────┐');
+    console.log('  │    WhatsApp Chatbot VA       │');
+    console.log('  └─────────────────────────────┘');
+    console.log('');
 
     checkSessionExpiry();
 
@@ -74,19 +77,19 @@ async function startBot() {
     // Mencegah error "Connection Closed" karena timeout saat mengetik.
     let phoneNumber = '';
     if (!state.creds.registered) {
-        console.log('📱 Belum terhubung ke WhatsApp.');
+        log.sys('Belum terhubung ke WhatsApp');
         const input = await askQuestion('Masukkan nomor telepon bot (contoh: 6281234567890): ');
         phoneNumber = input.replace(/[^0-9]/g, '');
 
         if (!phoneNumber || phoneNumber.length < 10) {
-            console.log('❌ Nomor telepon tidak valid!');
+            log.fail(null, 'Nomor telepon tidak valid');
             process.exit(1);
         }
     }
 
     // Ambil versi WA Web terbaru
     const { version, isLatest } = await fetchLatestBaileysVersion();
-    console.log(`\n📲 Menggunakan WA v${version.join('.')} (Latest: ${isLatest})`);
+    log.info(`WA Web v${version.join('.')} (latest: ${isLatest})`);
 
     // Buka koneksi HANYA setelah nomor didapatkan
     const sock = makeWASocket({
@@ -109,24 +112,24 @@ async function startBot() {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-            console.log(`\n⚠️  Koneksi terputus (code: ${statusCode})`);
+            log.warn(`Koneksi terputus (code: ${statusCode})`);
 
             if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
-                console.log('❌ Sesi ditolak. Menghapus data login...');
+                log.warn('Sesi ditolak. Menghapus data login...');
                 fs.rmSync(AUTH_DIR, { recursive: true, force: true });
                 process.exit(0);
             }
 
             if (shouldReconnect) {
-                console.log('🔄 Mencoba reconnect...\n');
+                log.sys('Mencoba reconnect...');
                 startBot();
             }
         }
 
         if (connection === 'open') {
             saveSessionTimestamp();
-            console.log('\n✅ BERHASIL TERHUBUNG KE WHATSAPP!\n');
-            console.log('⏳ Bot siap menerima pesan...\n');
+            log.sys('Terhubung ke WhatsApp');
+            log.sys('Bot siap menerima pesan');
         }
     });
 
@@ -139,14 +142,14 @@ async function startBot() {
 
                 await handleMessage(sock, msg);
             } catch (err) {
-                console.log(`❌ Error handling pesan: ${err.message}`);
+                log.fail(msg.key?.remoteJid, 'Error handling pesan', err.message);
             }
         }
     });
 
     // Request Pairing Code SETELAH event terpasang dan koneksi socket mulai berjalan
     if (phoneNumber && !sock.authState.creds.registered) {
-        console.log('⏳ Menghubungkan ke server WhatsApp untuk meminta kode...');
+        log.sys('Menghubungkan ke server WhatsApp...');
         
         // Jeda 3 detik agar koneksi websocket benar-benar terbuka
         setTimeout(async () => {
@@ -154,17 +157,18 @@ async function startBot() {
                 const code = await sock.requestPairingCode(phoneNumber);
                 const formattedCode = code?.match(/.{1,4}/g)?.join('-') || code;
                 
-                console.log(`\n🔑 PAIRING CODE ANDA: ${formattedCode}`);
-                console.log('\n📋 Cara memasukkan kode:');
-                console.log('   1. Buka WhatsApp di HP Anda');
-                console.log('   2. Buka Settings/Titik Tiga > Perangkat Tertaut');
-                console.log('   3. Tap "Tautkan Perangkat"');
-                console.log('   4. Tap "Tautkan dengan nomor telepon saja" (di bagian bawah)');
-                console.log('   5. Masukkan kode di atas\n');
-                console.log('⚠️  Tunggu sampai muncul tulisan BERHASIL TERHUBUNG sebelum menutup terminal.\n');
+                log.info(`PAIRING CODE: ${formattedCode}`);
+                console.log('');
+                console.log('  1. Buka WhatsApp di HP');
+                console.log('  2. Settings > Perangkat Tertaut');
+                console.log('  3. Tautkan Perangkat');
+                console.log('  4. Tautkan dengan nomor telepon');
+                console.log('  5. Masukkan kode di atas');
+                console.log('');
+                log.warn('Tunggu sampai TERHUBUNG sebelum menutup terminal');
             } catch (error) {
-                console.log(`\n❌ Gagal meminta pairing code: ${error.message}`);
-                console.log('Coba hapus folder auth_info dan jalankan ulang.');
+                log.fail(null, 'Gagal meminta pairing code', error.message);
+                log.info('Coba hapus folder auth_info dan jalankan ulang');
             }
         }, 3000); 
     }
@@ -187,7 +191,7 @@ async function handleMessage(sock, msg) {
 
     // ═══ STIKER GAMBAR ═══
     if (isImage && isStickerCommand) {
-        console.log(`📨 Menerima permintaan stiker gambar dari ${jid}`);
+        log.chat(jid, 'Stiker gambar');
 
         await sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } });
 
@@ -196,9 +200,9 @@ async function handleMessage(sock, msg) {
             const stickerBuffer = await createSticker(buffer);
             await sock.sendMessage(jid, { sticker: stickerBuffer }, { quoted: msg });
             await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
-            console.log(`✅ Stiker gambar berhasil dikirim ke ${jid}`);
+            log.done(jid, 'Stiker gambar dikirim');
         } catch (err) {
-            console.log(`❌ Gagal membuat stiker gambar: ${err.message}`);
+            log.fail(jid, 'Stiker gambar gagal', err.message);
             await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
             await sock.sendMessage(jid, {
                 text: '❌ Gagal membuat stiker. Pastikan gambar valid dan coba lagi.'
@@ -209,7 +213,7 @@ async function handleMessage(sock, msg) {
     // ═══ GIF STIKER (VIDEO) ═══
     if (isVideo && isStickerCommand) {
         const videoDuration = msg.message.videoMessage?.seconds || 0;
-        console.log(`🎬 Menerima permintaan GIF stiker dari ${jid} (durasi: ${videoDuration}s)`);
+        log.chat(jid, 'GIF stiker', `${videoDuration}s`);
 
         if (videoDuration > 5) {
             await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
@@ -226,9 +230,9 @@ async function handleMessage(sock, msg) {
             const stickerBuffer = await createGifSticker(buffer);
             await sock.sendMessage(jid, { sticker: stickerBuffer }, { quoted: msg });
             await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
-            console.log(`✅ GIF stiker berhasil dikirim ke ${jid}`);
+            log.done(jid, 'GIF stiker dikirim');
         } catch (err) {
-            console.log(`❌ Gagal membuat GIF stiker: ${err.message}`);
+            log.fail(jid, 'GIF stiker gagal', err.message);
             await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
             await sock.sendMessage(jid, {
                 text: `❌ Gagal membuat GIF stiker. ${err.message}`
@@ -247,16 +251,16 @@ async function handleMessage(sock, msg) {
             return;
         }
 
-        console.log(`🌤️ Permintaan cuaca "${city}" dari ${jid}`);
+        log.chat(jid, 'Cuaca', city);
         await sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } });
 
         try {
             const result = await getWeather(city);
             await sock.sendMessage(jid, { text: result }, { quoted: msg });
             await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
-            console.log(`✅ Info cuaca "${city}" dikirim ke ${jid}`);
+            log.done(jid, 'Cuaca dikirim');
         } catch (err) {
-            console.log(`❌ Gagal ambil cuaca: ${err.message}`);
+            log.fail(jid, 'Cuaca gagal', err.message);
             await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
             await sock.sendMessage(jid, {
                 text: `❌ ${err.message}`
@@ -275,7 +279,7 @@ async function handleMessage(sock, msg) {
             return;
         }
 
-        console.log(`📲 Permintaan QR code dari ${jid}`);
+        log.chat(jid, 'QR code');
         await sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } });
 
         try {
@@ -285,9 +289,9 @@ async function handleMessage(sock, msg) {
                 caption: `📲 *QR Code*\n\n📝 *Isi:* ${text}\n\n_© Copyright VA 2026_`
             }, { quoted: msg });
             await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
-            console.log(`✅ QR code dikirim ke ${jid}`);
+            log.done(jid, 'QR code dikirim');
         } catch (err) {
-            console.log(`❌ Gagal buat QR: ${err.message}`);
+            log.fail(jid, 'QR code gagal', err.message);
             await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
             await sock.sendMessage(jid, {
                 text: '❌ Gagal membuat QR code. Coba lagi.'
@@ -330,14 +334,14 @@ async function handleMessage(sock, msg) {
             await sock.sendMessage(targetJid, {
                 text: `⏰ *PENGINGAT!*\n\n📝 ${text}\n\n_Reminder #${remId} — © Copyright VA 2026_`
             });
-            console.log(`⏰ Reminder #${remId} terkirim ke ${targetJid}`);
+            log.done(targetJid, `Reminder #${remId} terkirim`);
         });
 
         await sock.sendMessage(jid, {
             text: `✅ Pengingat berhasil diset!\n\n⏰ *ID:* #${id}\n📝 *Pesan:* ${reminderText}\n⏱️ *Dalam:* ${parsed.label}\n\n_Ketik .listreminder untuk melihat daftar_\n_Ketik .hapusreminder ${id} untuk membatalkan_`
         }, { quoted: msg });
 
-        console.log(`⏰ Reminder #${id} diset oleh ${jid}: "${reminderText}" dalam ${parsed.label}`);
+        log.chat(jid, `Reminder #${id}`, `"${reminderText}" dalam ${parsed.label}`);
     }
 
     // ═══ LIST REMINDER ═══
@@ -395,7 +399,7 @@ async function handleMessage(sock, msg) {
             return;
         }
 
-        console.log(`🔊 Permintaan TTS dari ${jid}: "${ttsText.substring(0, 50)}..."`);
+        log.chat(jid, 'TTS', `"${ttsText.substring(0, 40)}..."`);
         await sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } });
 
         try {
@@ -406,9 +410,9 @@ async function handleMessage(sock, msg) {
                 ptt: true
             }, { quoted: msg });
             await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
-            console.log(`✅ TTS berhasil dikirim ke ${jid}`);
+            log.done(jid, 'TTS dikirim');
         } catch (err) {
-            console.log(`❌ Gagal TTS: ${err.message}`);
+            log.fail(jid, 'TTS gagal', err.message);
             await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
             await sock.sendMessage(jid, {
                 text: `❌ ${err.message}`
@@ -435,7 +439,7 @@ async function handleMessage(sock, msg) {
             return;
         }
 
-        console.log(`⬇️ Download video dari ${platform}: ${url.substring(0, 50)}...`);
+        log.chat(jid, `Download video [${platform}]`, url.substring(0, 50));
         await sock.sendMessage(jid, { react: { text: '⬇️', key: msg.key } });
         await sock.sendMessage(jid, {
             text: `⏳ Sedang mendownload video dari *${platform}*...\n_Harap tunggu, ini bisa memakan waktu._`
@@ -467,9 +471,9 @@ async function handleMessage(sock, msg) {
             }
 
             await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
-            console.log(`✅ Video dari ${platform} dikirim ke ${jid}`);
+            log.done(jid, `Video [${platform}] dikirim`);
         } catch (err) {
-            console.log(`❌ Gagal download: ${err.message}`);
+            log.fail(jid, 'Download gagal', err.message);
             await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
             await sock.sendMessage(jid, {
                 text: `❌ ${err.message}`
@@ -496,7 +500,7 @@ async function handleMessage(sock, msg) {
             return;
         }
 
-        console.log(`🎵 Download audio dari ${platform}: ${url.substring(0, 50)}...`);
+        log.chat(jid, `Download audio [${platform}]`, url.substring(0, 50));
         await sock.sendMessage(jid, { react: { text: '🎵', key: msg.key } });
         await sock.sendMessage(jid, {
             text: `⏳ Sedang mendownload audio dari *${platform}*...`
@@ -512,9 +516,9 @@ async function handleMessage(sock, msg) {
             }, { quoted: msg });
 
             await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
-            console.log(`✅ Audio dari ${platform} dikirim ke ${jid}`);
+            log.done(jid, `Audio [${platform}] dikirim`);
         } catch (err) {
-            console.log(`❌ Gagal download audio: ${err.message}`);
+            log.fail(jid, 'Download audio gagal', err.message);
             await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
             await sock.sendMessage(jid, {
                 text: `❌ ${err.message}`
@@ -533,16 +537,16 @@ async function handleMessage(sock, msg) {
             return;
         }
 
-        console.log(`🤖 AI chat dari ${jid}: "${userMsg.substring(0, 50)}..."`);
+        log.chat(jid, 'AI chat', `"${userMsg.substring(0, 40)}..."`);
         await sock.sendMessage(jid, { react: { text: '💋', key: msg.key } });
 
         try {
             const reply = await geminiChat(jid, userMsg);
             await sock.sendMessage(jid, { text: reply }, { quoted: msg });
             await sock.sendMessage(jid, { react: { text: '💕', key: msg.key } });
-            console.log(`✅ AI reply dikirim ke ${jid}`);
+            log.done(jid, 'AI reply dikirim');
         } catch (err) {
-            console.log(`❌ Gagal AI: ${err.message}`);
+            log.fail(jid, 'AI gagal', err.message);
             await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
             await sock.sendMessage(jid, {
                 text: `❌ ${err.message}`
