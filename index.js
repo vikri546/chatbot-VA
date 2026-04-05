@@ -11,7 +11,7 @@ const pino = require('pino');
 const readline = require('readline');
 const fs = require('fs');
 const path = require('path');
-const { createSticker, createGifSticker } = require('./lib/sticker');
+const { createSticker, createGifSticker, stickerToImage } = require('./lib/sticker');
 const { getWeather } = require('./lib/weather');
 const { generateQR } = require('./lib/qrcode');
 const { parseDuration, setReminder, cancelReminder, getReminders, formatRemaining } = require('./lib/reminder');
@@ -201,6 +201,7 @@ async function handleMessage(sock, msg) {
     const isQuotedVideo = quotedType === 'videoMessage';
     const hasImage = isDirectImage || isQuotedImage;
     const hasVideo = isDirectVideo || isQuotedVideo;
+    const isQuotedSticker = quotedType === 'stickerMessage';
 
     const isStickerCommand = caption &&
         (caption.toLowerCase() === '.stiker' || caption.toLowerCase() === '.sticker');
@@ -218,6 +219,30 @@ async function handleMessage(sock, msg) {
             if (isQuotedVideo) return await downloadQuotedMedia(quotedMsg.videoMessage, 'video');
         }
         return null;
+    }
+
+    // ═══ STIKER TO IMAGE (.toimg) ═══
+    if (caption && caption.toLowerCase() === '.toimg' && isQuotedSticker) {
+        log.chat(jid, 'Stiker to Image');
+        await sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } });
+
+        try {
+            const stickerBuffer = await downloadQuotedMedia(quotedMsg.stickerMessage, 'sticker');
+            const imageBuffer = await stickerToImage(stickerBuffer);
+            await sock.sendMessage(jid, {
+                image: imageBuffer,
+                mimetype: 'image/png'
+            }, { quoted: msg });
+            await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
+            log.done(jid, 'Stiker to Image dikirim');
+        } catch (err) {
+            log.fail(jid, 'Stiker to Image gagal', err.message);
+            await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
+            await sock.sendMessage(jid, {
+                text: '❌ Gagal convert stiker ke gambar. Coba lagi.'
+            }, { quoted: msg });
+        }
+        return;
     }
 
     // ═══ AUTOSTICKER ON/OFF ═══
@@ -663,7 +688,10 @@ async function handleMessage(sock, msg) {
 *Autosticker*
   .autosticker on  \u2014 aktifkan
   .autosticker off \u2014 nonaktifkan
-  Setiap gambar otomatis jadi stiker.
+
+*Stiker to Image*
+  Reply stiker + ketik .toimg
+  Convert stiker jadi gambar.
 
 *Cuaca*
   .cuaca [kota]
