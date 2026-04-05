@@ -17,5 +17,5 @@ module.exports = {
 
     // Sticker metadata
     STICKER_PACK_NAME: 'Copyright VA 2026',
-    STICKER_AUTHOR: 'VA Bot',
+    STICKER_AUTHOR: '',
 };

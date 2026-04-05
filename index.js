@@ -554,63 +554,48 @@ async function handleMessage(sock, msg) {
 
     // Menu / help command
     if (caption && (caption.toLowerCase() === '.menu' || caption.toLowerCase() === '.help')) {
-        const menuText = `╔══════════════════════╗
-║  *CHATBOT VA* 🤖
-╚══════════════════════╝
+        const menuText = `┌─────────────────────────┐
+│      *CHATBOT VA*       │
+└─────────────────────────┘
 
-📌 *Daftar Perintah:*
+*Stiker*
+  .stiker / .sticker
+  Kirim gambar atau video
+  (maks 5 detik) dengan
+  caption ini.
 
-🖼️ *.stiker* / *.sticker*
-   Kirim *gambar* dengan caption ini
-   untuk dijadikan stiker.
+*Cuaca*
+  .cuaca [kota]
+  Contoh: .cuaca Jakarta
 
-🎬 *.stiker* / *.sticker*
-   Kirim *video* (maks 5 detik)
-   dengan caption ini untuk dijadikan
-   GIF stiker animasi.
+*QR Code*
+  .qr [teks/url]
+  Contoh: .qr https://google.com
 
-🌤️ *.cuaca* [kota]
-   Cek info cuaca realtime.
-   Contoh: .cuaca Jakarta
+*Reminder*
+  .ingatkan [durasi] [pesan]
+  .listreminder
+  .hapusreminder [id]
+  Contoh: .ingatkan 30m Makan
 
-📲 *.qr* [teks/url]
-   Buat QR code dari teks atau link.
-   Contoh: .qr https://google.com
+*Text-to-Speech*
+  .tts [teks]
+  Contoh: .tts Halo selamat pagi
 
-⏰ *.ingatkan* [durasi] [pesan]
-   Set pengingat otomatis.
-   Contoh: .ingatkan 30m Minum obat
+*Download Media*
+  .dl [url]  — download video
+  .mp3 [url] — download audio
+  Support: YT, IG, TT, FB, X
 
-📝 *.listreminder*
-   Lihat daftar pengingat aktif.
+*AI Chat*
+  .ai [pesan]
+  .resetai — reset riwayat
 
-❌ *.hapusreminder* [id]
-   Batalkan pengingat.
+*Lainnya*
+  .menu / .help
 
-🔊 *.tts* [teks]
-   Ubah teks jadi voice note.
-   Contoh: .tts Halo selamat pagi
-
-⬇️ *.dl* [url]
-   Download video dari link.
-   YT, IG, TT, FB, Twitter/X
-
-🎵 *.mp3* [url]
-   Download audio/musik dari link.
-
-💋 *.ai* [pesan]
-   Chat sama Cappie ~ AI.
-   Contoh: .ai Halo Cappie!
-
-🔄 *.resetai*
-   Reset riwayat chat AI.
-
-ℹ️ *.menu* / *.help*
-   Menampilkan menu ini.
-
-📦 Nama paket: *Copyright VA 2026*
-─────────────────────
-_© Copyright VA 2026_`;
+─────────────────────────
+           Copyright VA 2026`;
 
         await sock.sendMessage(jid, { text: menuText }, { quoted: msg });
     }
