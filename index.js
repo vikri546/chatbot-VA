@@ -443,20 +443,26 @@ async function handleMessage(sock, msg) {
 
         try {
             const result = await downloadMedia(url, 'video');
-            const ext = result.filename.split('.').pop().toLowerCase();
+            const ext = result.ext;
 
-            if (ext === 'mp4' || ext === 'webm' || ext === 'mkv') {
+            if (['mp4', 'webm', 'mkv', 'mov'].includes(ext)) {
                 await sock.sendMessage(jid, {
                     video: result.buffer,
-                    caption: `🎬 *${result.title}*\n⏱️ Durasi: ${formatDuration(result.duration)}\n📡 ${platform}\n\n_© Copyright VA 2026_`,
+                    caption: `*${result.title}*\nDurasi: ${formatDuration(result.duration)} | ${platform}`,
                     mimetype: 'video/mp4'
+                }, { quoted: msg });
+            } else if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) {
+                await sock.sendMessage(jid, {
+                    image: result.buffer,
+                    caption: `*${result.title}*\n${platform}`,
+                    mimetype: `image/${ext === 'jpg' ? 'jpeg' : ext}`
                 }, { quoted: msg });
             } else {
                 await sock.sendMessage(jid, {
                     document: result.buffer,
                     fileName: result.filename,
                     mimetype: 'application/octet-stream',
-                    caption: `📥 *${result.title}*\n📡 ${platform}`
+                    caption: `*${result.title}* | ${platform}`
                 }, { quoted: msg });
             }
 
