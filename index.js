@@ -3,6 +3,7 @@ const {
     useMultiFileAuthState, 
     DisconnectReason, 
     downloadMediaMessage,
+    downloadContentFromMessage,
     Browsers,
     fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
@@ -182,21 +183,48 @@ async function handleMessage(sock, msg) {
     const messageType = Object.keys(msg.message)[0];
     const caption = getCaption(msg);
 
-    const isImage = messageType === 'imageMessage' ||
-                    (messageType === 'extendedTextMessage' && msg.message.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage);
-    const isVideo = messageType === 'videoMessage';
+    // ═══ DETEKSI QUOTED MESSAGE (REPLY) ═══
+    const contextInfo = msg.message?.extendedTextMessage?.contextInfo
+                     || msg.message?.imageMessage?.contextInfo
+                     || msg.message?.videoMessage?.contextInfo
+                     || null;
+    const quotedMsg = contextInfo?.quotedMessage || null;
+    const quotedType = quotedMsg ? Object.keys(quotedMsg)[0] : null;
+
+    // Cek tipe media: langsung ATAU via reply
+    const isDirectImage = messageType === 'imageMessage';
+    const isDirectVideo = messageType === 'videoMessage';
+    const isQuotedImage = quotedType === 'imageMessage';
+    const isQuotedVideo = quotedType === 'videoMessage';
+    const hasImage = isDirectImage || isQuotedImage;
+    const hasVideo = isDirectVideo || isQuotedVideo;
 
     const isStickerCommand = caption &&
         (caption.toLowerCase() === '.stiker' || caption.toLowerCase() === '.sticker');
 
+    /**
+     * Helper: download media dari pesan langsung atau quoted message
+     */
+    async function getMediaBuffer(type) {
+        if (type === 'image') {
+            if (isDirectImage) return await downloadMediaMessage(msg, 'buffer', {});
+            if (isQuotedImage) return await downloadQuotedMedia(quotedMsg.imageMessage, 'image');
+        }
+        if (type === 'video') {
+            if (isDirectVideo) return await downloadMediaMessage(msg, 'buffer', {});
+            if (isQuotedVideo) return await downloadQuotedMedia(quotedMsg.videoMessage, 'video');
+        }
+        return null;
+    }
+
     // ═══ STIKER GAMBAR ═══
-    if (isImage && isStickerCommand) {
-        log.chat(jid, 'Stiker gambar');
+    if (hasImage && isStickerCommand) {
+        log.chat(jid, 'Stiker gambar', isQuotedImage ? 'via reply' : 'langsung');
 
         await sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } });
 
         try {
-            const buffer = await downloadMediaMessage(msg, 'buffer', {});
+            const buffer = await getMediaBuffer('image');
             const stickerBuffer = await createSticker(buffer);
             await sock.sendMessage(jid, { sticker: stickerBuffer }, { quoted: msg });
             await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
@@ -211,9 +239,11 @@ async function handleMessage(sock, msg) {
     }
 
     // ═══ GIF STIKER (VIDEO) ═══
-    if (isVideo && isStickerCommand) {
-        const videoDuration = msg.message.videoMessage?.seconds || 0;
-        log.chat(jid, 'GIF stiker', `${videoDuration}s`);
+    if (hasVideo && isStickerCommand) {
+        const videoDuration = isDirectVideo
+            ? (msg.message.videoMessage?.seconds || 0)
+            : (quotedMsg?.videoMessage?.seconds || 0);
+        log.chat(jid, 'GIF stiker', `${videoDuration}s${isQuotedVideo ? ' via reply' : ''}`);
 
         if (videoDuration > 5) {
             await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
@@ -226,7 +256,7 @@ async function handleMessage(sock, msg) {
         await sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } });
 
         try {
-            const buffer = await downloadMediaMessage(msg, 'buffer', {});
+            const buffer = await getMediaBuffer('video');
             const stickerBuffer = await createGifSticker(buffer);
             await sock.sendMessage(jid, { sticker: stickerBuffer }, { quoted: msg });
             await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
@@ -609,6 +639,24 @@ async function handleMessage(sock, msg) {
 
         await sock.sendMessage(jid, { text: menuText }, { quoted: msg });
     }
+}
+
+/**
+ * Download media dari quoted (replied) message.
+ * downloadMediaMessage tidak bisa dipakai untuk quoted message,
+ * jadi kita pakai downloadContentFromMessage langsung.
+ *
+ * @param {object} mediaMsg - Quoted message object (imageMessage/videoMessage)
+ * @param {'image'|'video'|'audio'} type - Tipe media
+ * @returns {Promise<Buffer>}
+ */
+async function downloadQuotedMedia(mediaMsg, type) {
+    const stream = await downloadContentFromMessage(mediaMsg, type);
+    const chunks = [];
+    for await (const chunk of stream) {
+        chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
 }
 
 /**
