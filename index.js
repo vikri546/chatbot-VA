@@ -26,6 +26,9 @@ const log = require('./lib/logger');
 // ══════════════════════════════════════════════
 
 const logger = pino({ level: 'silent' });
+
+// State per-user untuk autosticker
+const autoStickerUsers = new Map();
 const AUTH_DIR = 'auth_info';
 const SESSION_FILE = path.join(AUTH_DIR, '.session_created');
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 hari dalam ms
@@ -215,6 +218,58 @@ async function handleMessage(sock, msg) {
             if (isQuotedVideo) return await downloadQuotedMedia(quotedMsg.videoMessage, 'video');
         }
         return null;
+    }
+
+    // ═══ AUTOSTICKER ON/OFF ═══
+    if (caption && caption.toLowerCase().startsWith('.autosticker')) {
+        const mode = caption.slice(12).trim().toLowerCase();
+
+        if (mode === 'on') {
+            autoStickerUsers.set(jid, { count: 0 });
+            log.chat(jid, 'Autosticker ON');
+            await sock.sendMessage(jid, {
+                text: 'Autosticker *aktif*. Setiap gambar yang dikirim akan otomatis dijadikan stiker.\n\nKetik *.autosticker off* untuk menonaktifkan.'
+            }, { quoted: msg });
+            return;
+        }
+        if (mode === 'off') {
+            const data = autoStickerUsers.get(jid);
+            const total = data?.count || 0;
+            autoStickerUsers.delete(jid);
+            log.chat(jid, 'Autosticker OFF', `${total} stiker dibuat`);
+            await sock.sendMessage(jid, {
+                text: `Autosticker *nonaktif*. Total ${total} stiker telah dibuat.`
+            }, { quoted: msg });
+            return;
+        }
+
+        // Jika bukan on/off
+        const status = autoStickerUsers.has(jid) ? 'aktif' : 'nonaktif';
+        await sock.sendMessage(jid, {
+            text: `Autosticker saat ini: *${status}*\n\n.autosticker on \u2014 aktifkan\n.autosticker off \u2014 nonaktifkan`
+        }, { quoted: msg });
+        return;
+    }
+
+    // ═══ AUTOSTICKER: AUTO CONVERT GAMBAR ═══
+    if (isDirectImage && !caption && autoStickerUsers.has(jid)) {
+        const data = autoStickerUsers.get(jid);
+        data.count++;
+        log.chat(jid, `Autosticker #${data.count}`);
+
+        await sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } });
+
+        try {
+            const buffer = await downloadMediaMessage(msg, 'buffer', {});
+            const stickerBuffer = await createSticker(buffer);
+            await sock.sendMessage(jid, { sticker: stickerBuffer }, { quoted: msg });
+            await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
+            log.done(jid, `Autosticker #${data.count} dikirim`);
+        } catch (err) {
+            log.fail(jid, 'Autosticker gagal', err.message);
+            await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
+        }
+        return;
     }
 
     // ═══ STIKER GAMBAR ═══
@@ -603,6 +658,12 @@ async function handleMessage(sock, msg) {
   Kirim gambar atau video
   (maks 5 detik) dengan
   caption ini.
+  Reply gambar/video juga bisa.
+
+*Autosticker*
+  .autosticker on  \u2014 aktifkan
+  .autosticker off \u2014 nonaktifkan
+  Setiap gambar otomatis jadi stiker.
 
 *Cuaca*
   .cuaca [kota]
