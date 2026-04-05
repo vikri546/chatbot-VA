@@ -3,3 +3,5 @@ auth_info/
 *.log
 .DS_Store
 package-lock.json
+config.js
+session_created.txt
