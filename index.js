@@ -16,7 +16,7 @@ const { getWeather } = require('./lib/weather');
 const { generateQR } = require('./lib/qrcode');
 const { parseDuration, setReminder, cancelReminder, getReminders, formatRemaining } = require('./lib/reminder');
 const { textToSpeech } = require('./lib/tts');
-const { downloadMedia, detectPlatform, formatDuration } = require('./lib/downloader');
+const { downloadMedia, downloadImage, detectPlatform, formatDuration } = require('./lib/downloader');
 const { chat: geminiChat, resetChat: geminiReset } = require('./lib/gemini');
 const log = require('./lib/logger');
 
@@ -636,6 +636,46 @@ async function handleMessage(sock, msg) {
         }
     }
 
+    // ═══ DOWNLOAD GAMBAR SOSMED (.jpg) ═══
+    if (caption && caption.toLowerCase().startsWith('.jpg')) {
+        const url = caption.slice(4).trim();
+
+        if (!url) {
+            await sock.sendMessage(jid, {
+                text: '❌ Masukkan URL!\n\nContoh: *.jpg https://instagram.com/p/xxx*\n\nDownload gambar dari YT, IG, TT, FB, X'
+            }, { quoted: msg });
+            return;
+        }
+
+        const platform = detectPlatform(url);
+        if (!platform) {
+            await sock.sendMessage(jid, {
+                text: '❌ URL tidak didukung!'
+            }, { quoted: msg });
+            return;
+        }
+
+        log.chat(jid, `Download gambar [${platform}]`, url.substring(0, 50));
+        await sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } });
+
+        try {
+            const result = await downloadImage(url);
+            await sock.sendMessage(jid, {
+                image: result.buffer,
+                caption: `*${result.title}*\n${platform}`,
+                mimetype: 'image/jpeg'
+            }, { quoted: msg });
+            await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
+            log.done(jid, `Gambar [${platform}] dikirim`);
+        } catch (err) {
+            log.fail(jid, 'Download gambar gagal', err.message);
+            await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
+            await sock.sendMessage(jid, {
+                text: `❌ ${err.message}`
+            }, { quoted: msg });
+        }
+    }
+
     // ═══ AI CHAT (Cappie / Gemini) ═══
     if (caption && caption.toLowerCase().startsWith('.ai')) {
         const userMsg = caption.slice(3).trim();
@@ -714,6 +754,7 @@ async function handleMessage(sock, msg) {
 *Download Media*
   .dl [url]  — download video
   .mp3 [url] — download audio
+  .jpg [url] — download gambar
   Support: YT, IG, TT, FB, X
 
 *AI Chat*
