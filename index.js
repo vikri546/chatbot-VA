@@ -637,7 +637,11 @@ async function handleMessage(sock, msg) {
 ─────────────────────────
            Copyright VA 2026`;
 
-        await sock.sendMessage(jid, { text: menuText }, { quoted: msg });
+        await sock.sendMessage(jid, {
+            image: { url: 'https://d2vrvpw63099lz.cloudfront.net/whatsapp-bots/whatsapp-bots.png' },
+            caption: menuText,
+            mimetype: 'image/png'
+        }, { quoted: msg });
     }
 }
 
