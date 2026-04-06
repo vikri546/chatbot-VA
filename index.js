@@ -17,7 +17,7 @@ const { generateQR } = require('./lib/qrcode');
 const { parseDuration, setReminder, cancelReminder, getReminders, formatRemaining } = require('./lib/reminder');
 const { textToSpeech } = require('./lib/tts');
 const { downloadMedia, downloadImage, detectPlatform, formatDuration } = require('./lib/downloader');
-const { chat: geminiChat, resetChat: geminiReset, setCustomPrompt, clearCustomPrompt } = require('./lib/gemini');
+const { chat: geminiChat, resetChat: geminiReset, setCustomPrompt, clearCustomPrompt, analyzeImage: geminiAnalyzeImage, analyzeWebsite: geminiAnalyzeWebsite } = require('./lib/gemini');
 const { searchCharacter, scrapePersonality, buildPersonalityPrompt, setPending, getPending, clearPending, setUserPersonality, getUserPersonality, resetUserPersonality } = require('./lib/personality');
 const log = require('./lib/logger');
 
@@ -846,6 +846,76 @@ async function handleMessage(sock, msg) {
         }, { quoted: msg });
     }
 
+    // ═══ ANALYZE IMAGE ═══
+    if (caption && caption.toLowerCase().startsWith('.analyzeimg')) {
+        const extraPrompt = caption.slice(11).trim();
+
+        if (!hasImage) {
+            await sock.sendMessage(jid, {
+                text: '❌ Kirim gambar dengan caption *.analyzeimg*\natau reply gambar dengan *.analyzeimg*'
+            }, { quoted: msg });
+            return;
+        }
+
+        log.chat(jid, 'Analyze Image', isQuotedImage ? 'via reply' : 'langsung');
+        await sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } });
+
+        try {
+            const buffer = await getMediaBuffer('image');
+            const result = await geminiAnalyzeImage(jid, buffer, extraPrompt);
+            await sock.sendMessage(jid, { text: result }, { quoted: msg });
+            await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
+            log.done(jid, 'Analyze Image dikirim');
+        } catch (err) {
+            log.fail(jid, 'Analyze Image gagal', err.message);
+            await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
+            await sock.sendMessage(jid, {
+                text: `❌ ${err.message}`
+            }, { quoted: msg });
+        }
+        return;
+    }
+
+    // ═══ ANALYZE WEBSITE ═══
+    if (caption && caption.toLowerCase().startsWith('.analyzeweb')) {
+        const url = caption.slice(11).trim();
+
+        if (!url) {
+            await sock.sendMessage(jid, {
+                text: '❌ Masukkan URL!\n\nContoh: *.analyzeweb https://google.com*'
+            }, { quoted: msg });
+            return;
+        }
+
+        // Validasi URL
+        try { new URL(url); } catch {
+            await sock.sendMessage(jid, {
+                text: '❌ URL tidak valid! Pastikan dimulai dengan https://'
+            }, { quoted: msg });
+            return;
+        }
+
+        log.chat(jid, 'Analyze Website', url.substring(0, 50));
+        await sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } });
+        await sock.sendMessage(jid, {
+            text: `⏳ Sedang menganalisis *${new URL(url).hostname}*...`
+        }, { quoted: msg });
+
+        try {
+            const result = await geminiAnalyzeWebsite(jid, url);
+            await sock.sendMessage(jid, { text: result }, { quoted: msg });
+            await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
+            log.done(jid, 'Analyze Website dikirim');
+        } catch (err) {
+            log.fail(jid, 'Analyze Website gagal', err.message);
+            await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
+            await sock.sendMessage(jid, {
+                text: `❌ ${err.message}`
+            }, { quoted: msg });
+        }
+        return;
+    }
+
     // Menu / help command
     if (caption && (caption.toLowerCase() === '.menu' || caption.toLowerCase() === '.help')) {
         const menuText = `┌─────────────────────────┐
@@ -900,11 +970,15 @@ async function handleMessage(sock, msg) {
   .personality reset
   Ganti karakter AI dari Fandom.
 
+*Analyze*
+  .analyzeimg — jelaskan gambar
+  .analyzeweb [url] — analisis web
+
 *Lainnya*
   .menu / .help
 
-─────────────────────────
-           Copyright VA 2026`;
+──────────────────────
+  Copyright VA 2026`;
 
         await sock.sendMessage(jid, {
             image: { url: 'https://d2vrvpw63099lz.cloudfront.net/whatsapp-bots/whatsapp-bots.png' },
