@@ -19,7 +19,7 @@ module.exports = {
     // Google Gemini AI
     // PENTING: Buat API key baru di https://aistudio.google.com/apikey
     // Key lama sudah di-revoke karena terexpose di GitHub
-    GEMINI_API_KEY: process.env.GEMINI_API_KEY || 'GANTI_DENGAN_API_KEY_BARU',
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY || 'AIzaSyA1qY_byQonJeatpQq5RN7jw1_SHxOGduA',
 
     // Sticker metadata
     STICKER_PACK_NAME: 'Copyright VA 2026',

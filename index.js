@@ -17,7 +17,8 @@ const { generateQR } = require('./lib/qrcode');
 const { parseDuration, setReminder, cancelReminder, getReminders, formatRemaining } = require('./lib/reminder');
 const { textToSpeech } = require('./lib/tts');
 const { downloadMedia, downloadImage, detectPlatform, formatDuration } = require('./lib/downloader');
-const { chat: geminiChat, resetChat: geminiReset } = require('./lib/gemini');
+const { chat: geminiChat, resetChat: geminiReset, setCustomPrompt, clearCustomPrompt } = require('./lib/gemini');
+const { searchCharacter, scrapePersonality, buildPersonalityPrompt, setPending, getPending, clearPending, setUserPersonality, getUserPersonality, resetUserPersonality } = require('./lib/personality');
 const log = require('./lib/logger');
 
 // ══════════════════════════════════════════════
@@ -676,6 +677,139 @@ async function handleMessage(sock, msg) {
         }
     }
 
+    // ═══ PERSONALITY SELECTION (pending pilihan nomor) ═══
+    const pending = getPending(jid);
+    if (pending && caption && /^\d+$/.test(caption.trim())) {
+        const choice = parseInt(caption.trim());
+        const results = pending.results;
+
+        if (choice < 1 || choice > results.length) {
+            await sock.sendMessage(jid, {
+                text: `❌ Pilih angka 1-${results.length}`
+            }, { quoted: msg });
+            return;
+        }
+
+        const selected = results[choice - 1];
+        clearPending(jid);
+
+        log.chat(jid, 'Personality pilih', `${selected.name} (${selected.series})`);
+        await sock.sendMessage(jid, {
+            text: `⏳ Sedang memproses Personality dari *${selected.name}* (${selected.series})...`
+        }, { quoted: msg });
+
+        try {
+            // Scrape personality dari Fandom
+            const personalityText = await scrapePersonality(selected.wikiDomain, selected.pageName);
+
+            // Build system prompt via Gemini enrichment
+            const prompt = await buildPersonalityPrompt(selected.name, selected.series, personalityText);
+
+            // Simpan personality
+            const oldPersonality = getUserPersonality(jid);
+            const oldName = oldPersonality ? `${oldPersonality.name} (${oldPersonality.series})` : 'Cappie (Default)';
+
+            setUserPersonality(jid, selected.name, selected.series, prompt);
+            setCustomPrompt(jid, prompt);
+
+            log.done(jid, `Personality: ${selected.name}`);
+            await sock.sendMessage(jid, {
+                text: `✅ Personality berhasil diganti!\n\nDari: *${oldName}*\nKe: *${selected.name}* (${selected.series})\n\nSekarang AI akan berperilaku seperti karakter tersebut.\nKetik *.personality reset* untuk kembali ke default.`
+            }, { quoted: msg });
+        } catch (err) {
+            log.fail(jid, 'Personality gagal', err.message);
+            await sock.sendMessage(jid, {
+                text: `❌ Gagal memproses personality: ${err.message}`
+            }, { quoted: msg });
+        }
+        return;
+    }
+
+    // ═══ PERSONALITY COMMAND ═══
+    if (caption && caption.toLowerCase().startsWith('.personality')) {
+        const arg = caption.slice(12).trim();
+
+        // Reset ke default
+        if (arg.toLowerCase() === 'reset') {
+            const old = getUserPersonality(jid);
+            resetUserPersonality(jid);
+            clearCustomPrompt(jid);
+            clearPending(jid);
+            log.chat(jid, 'Personality reset');
+            await sock.sendMessage(jid, {
+                text: `✅ Personality direset ke *Cappie (Default)*${old ? `\n\nSebelumnya: *${old.name}* (${old.series})` : ''}`
+            }, { quoted: msg });
+            return;
+        }
+
+        // Cek status saat ini
+        if (!arg) {
+            const current = getUserPersonality(jid);
+            const name = current ? `${current.name} (${current.series})` : 'Cappie (Default)';
+            await sock.sendMessage(jid, {
+                text: `Personality saat ini: *${name}*\n\n.personality [nama] \u2014 ganti karakter\n.personality reset \u2014 kembali ke default`
+            }, { quoted: msg });
+            return;
+        }
+
+        // Cari karakter
+        log.chat(jid, 'Personality search', arg);
+        await sock.sendMessage(jid, {
+            text: `⏳ Mencari karakter *${arg}* di Fandom...`
+        }, { quoted: msg });
+
+        try {
+            const results = await searchCharacter(arg);
+
+            if (results.length === 0) {
+                await sock.sendMessage(jid, {
+                    text: `❌ Karakter *${arg}* tidak ditemukan di Fandom.\nCoba nama lengkap atau ejaan lain.`
+                }, { quoted: msg });
+                return;
+            }
+
+            // Jika hanya 1 hasil, langsung proses
+            if (results.length === 1) {
+                const selected = results[0];
+                await sock.sendMessage(jid, {
+                    text: `⏳ Memproses Personality dari *${selected.name}* (${selected.series})...`
+                }, { quoted: msg });
+
+                const personalityText = await scrapePersonality(selected.wikiDomain, selected.pageName);
+                const prompt = await buildPersonalityPrompt(selected.name, selected.series, personalityText);
+
+                const oldPersonality = getUserPersonality(jid);
+                const oldName = oldPersonality ? `${oldPersonality.name} (${oldPersonality.series})` : 'Cappie (Default)';
+
+                setUserPersonality(jid, selected.name, selected.series, prompt);
+                setCustomPrompt(jid, prompt);
+
+                log.done(jid, `Personality: ${selected.name}`);
+                await sock.sendMessage(jid, {
+                    text: `✅ Personality berhasil diganti!\n\nDari: *${oldName}*\nKe: *${selected.name}* (${selected.series})\n\nKetik *.personality reset* untuk kembali ke default.`
+                }, { quoted: msg });
+                return;
+            }
+
+            // Multiple results — tampilkan pilihan
+            setPending(jid, results);
+            let listText = `Karakter *${arg}* ditemukan!\nPilih yang sesuai (ketik angkanya):\n\n`;
+            results.forEach((r, i) => {
+                listText += `*${i + 1}.* ${r.name} (${r.series})\n`;
+            });
+            listText += `\n_Pilihan berlaku 2 menit_`;
+
+            await sock.sendMessage(jid, { text: listText }, { quoted: msg });
+            log.done(jid, `Personality: ${results.length} hasil`);
+        } catch (err) {
+            log.fail(jid, 'Personality search gagal', err.message);
+            await sock.sendMessage(jid, {
+                text: `❌ Gagal mencari karakter: ${err.message}`
+            }, { quoted: msg });
+        }
+        return;
+    }
+
     // ═══ AI CHAT (Cappie / Gemini) ═══
     if (caption && caption.toLowerCase().startsWith('.ai')) {
         const userMsg = caption.slice(3).trim();
@@ -760,6 +894,11 @@ async function handleMessage(sock, msg) {
 *AI Chat*
   .ai [pesan]
   .resetai — reset riwayat
+
+*Personality*
+  .personality [nama]
+  .personality reset
+  Ganti karakter AI dari Fandom.
 
 *Lainnya*
   .menu / .help
