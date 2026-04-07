@@ -946,6 +946,119 @@ async function handleMessage(sock, msg) {
         return;
     }
 
+    // ═══ PING / NETWORK CHECK ═══
+    if (caption && caption.toLowerCase() === '.ping') {
+        const startTime = Date.now();
+        log.chat(jid, 'Ping check');
+        await sock.sendMessage(jid, { react: { text: '📡', key: msg.key } });
+
+        const { exec } = require('child_process');
+
+        // Run all checks in parallel
+        const [pingResult, networkInfo, uptimeInfo] = await Promise.all([
+            // 1. Ping google.com
+            new Promise((resolve) => {
+                exec('ping -c 3 -W 5 google.com', { timeout: 15000 }, (err, stdout) => {
+                    if (err) return resolve({ ok: false, error: 'Tidak dapat terhubung ke internet' });
+                    const avgMatch = stdout.match(/(?:avg|mdev)[^=]*=\s*[\d.]+\/([\d.]+)/);
+                    const lossMatch = stdout.match(/([\d.]+)% packet loss/);
+                    resolve({
+                        ok: true,
+                        avg: avgMatch ? parseFloat(avgMatch[1]).toFixed(1) : 'N/A',
+                        loss: lossMatch ? lossMatch[1] : '0'
+                    });
+                });
+            }),
+
+            // 2. Network info (try termux-wifi first, fallback to ip)
+            new Promise((resolve) => {
+                exec('termux-wifi-connectioninfo 2>/dev/null', { timeout: 5000 }, (err, stdout) => {
+                    if (!err && stdout.trim().startsWith('{')) {
+                        try {
+                            const wifi = JSON.parse(stdout.trim());
+                            return resolve({
+                                type: 'WiFi',
+                                name: wifi.ssid || 'Unknown',
+                                ip: wifi.ip || 'N/A',
+                                speed: wifi.link_speed_mbps ? `${wifi.link_speed_mbps} Mbps` : 'N/A',
+                                signal: wifi.rssi ? `${wifi.rssi} dBm` : 'N/A',
+                                freq: wifi.frequency_mhz ? `${wifi.frequency_mhz} MHz` : 'N/A'
+                            });
+                        } catch {}
+                    }
+                    // Fallback: ip route + ip addr
+                    exec('ip route get 8.8.8.8 2>/dev/null | head -1 && ip addr show 2>/dev/null | grep "inet " | grep -v 127.0.0', { timeout: 5000 }, (err2, stdout2) => {
+                        const lines = (stdout2 || '').trim().split('\n');
+                        const devMatch = lines[0]?.match(/dev\s+(\S+)/);
+                        const srcMatch = lines[0]?.match(/src\s+([\d.]+)/);
+                        const iface = devMatch ? devMatch[1] : 'unknown';
+                        const ip = srcMatch ? srcMatch[1] : 'N/A';
+                        const isWifi = iface.startsWith('wlan');
+                        resolve({
+                            type: isWifi ? 'WiFi' : 'Data/Ethernet',
+                            name: iface,
+                            ip,
+                            speed: 'N/A',
+                            signal: 'N/A',
+                            freq: 'N/A'
+                        });
+                    });
+                });
+            }),
+
+            // 3. System info
+            new Promise((resolve) => {
+                const mem = process.memoryUsage();
+                const uptime = process.uptime();
+                const h = Math.floor(uptime / 3600);
+                const m = Math.floor((uptime % 3600) / 60);
+                const s = Math.floor(uptime % 60);
+                resolve({
+                    uptime: h > 0 ? `${h}j ${m}m ${s}s` : `${m}m ${s}s`,
+                    memUsed: (mem.rss / 1024 / 1024).toFixed(1),
+                    memHeap: (mem.heapUsed / 1024 / 1024).toFixed(1)
+                });
+            })
+        ]);
+
+        const responseTime = Date.now() - startTime;
+
+        // Build response
+        let text = `┌─────────────────────────┐\n`;
+        text += `│     *NETWORK STATUS*    │\n`;
+        text += `└─────────────────────────┘\n\n`;
+
+        text += `*Koneksi*\n`;
+        text += `  Tipe     : ${networkInfo.type}\n`;
+        text += `  Nama     : ${networkInfo.name}\n`;
+        text += `  IP       : ${networkInfo.ip}\n`;
+        if (networkInfo.speed !== 'N/A') text += `  Kecepatan: ${networkInfo.speed}\n`;
+        if (networkInfo.signal !== 'N/A') text += `  Sinyal   : ${networkInfo.signal}\n`;
+        if (networkInfo.freq !== 'N/A') text += `  Frekuensi: ${networkInfo.freq}\n`;
+        text += `\n`;
+
+        text += `*Latency*\n`;
+        if (pingResult.ok) {
+            text += `  Google   : ${pingResult.avg} ms\n`;
+            text += `  Loss     : ${pingResult.loss}%\n`;
+        } else {
+            text += `  ${pingResult.error}\n`;
+        }
+        text += `  Bot      : ${responseTime} ms\n\n`;
+
+        text += `*System*\n`;
+        text += `  Uptime   : ${uptimeInfo.uptime}\n`;
+        text += `  RAM      : ${uptimeInfo.memUsed} MB\n`;
+        text += `  Heap     : ${uptimeInfo.memHeap} MB\n`;
+
+        text += `\n─────────────────────────`;
+
+        await sock.sendMessage(jid, { text }, { quoted: msg });
+        await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
+        log.done(jid, `Ping: ${pingResult.ok ? pingResult.avg + 'ms' : 'offline'} | Bot: ${responseTime}ms`);
+        return;
+    }
+
     // Menu / help command
     if (caption && (caption.toLowerCase() === '.menu' || caption.toLowerCase() === '.help')) {
         const menuText = `┌─────────────────────────┐
@@ -1009,6 +1122,7 @@ async function handleMessage(sock, msg) {
   .analyzeweb [url] — analisis web
 
 *Lainnya*
+  .ping — cek jaringan
   .menu / .help
 
 ──────────────────────
