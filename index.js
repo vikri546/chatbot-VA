@@ -11,7 +11,7 @@ const pino = require('pino');
 const readline = require('readline');
 const fs = require('fs');
 const path = require('path');
-const { createSticker, createGifSticker, stickerToImage } = require('./lib/sticker');
+const { createSticker, createGifSticker, stickerToImage, changeStickerAuthor } = require('./lib/sticker');
 const { getWeather } = require('./lib/weather');
 const { generateQR } = require('./lib/qrcode');
 const { parseDuration, setReminder, cancelReminder, getReminders, formatRemaining } = require('./lib/reminder');
@@ -241,6 +241,36 @@ async function handleMessage(sock, msg) {
             await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
             await sock.sendMessage(jid, {
                 text: '❌ Gagal convert stiker ke gambar. Coba lagi.'
+            }, { quoted: msg });
+        }
+        return;
+    }
+
+    // ═══ CHANGE STIKER AUTHOR (.author) ═══
+    if (caption && caption.toLowerCase().startsWith('.author') && isQuotedSticker) {
+        const newAuthor = caption.slice(7).trim();
+
+        if (!newAuthor) {
+            await sock.sendMessage(jid, {
+                text: '❌ Masukkan nama author!\n\nContoh: Reply stiker + ketik *.author Nama Kamu*'
+            }, { quoted: msg });
+            return;
+        }
+
+        log.chat(jid, 'Change Author', newAuthor);
+        await sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } });
+
+        try {
+            const stickerBuffer = await downloadQuotedMedia(quotedMsg.stickerMessage, 'sticker');
+            const newSticker = await changeStickerAuthor(stickerBuffer, newAuthor);
+            await sock.sendMessage(jid, { sticker: newSticker }, { quoted: msg });
+            await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
+            log.done(jid, `Author diganti: ${newAuthor}`);
+        } catch (err) {
+            log.fail(jid, 'Change Author gagal', err.message);
+            await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
+            await sock.sendMessage(jid, {
+                text: '❌ Gagal mengubah author stiker. Coba lagi.'
             }, { quoted: msg });
         }
         return;
@@ -936,6 +966,10 @@ async function handleMessage(sock, msg) {
 *Stiker to Image*
   Reply stiker + ketik .toimg
   Convert stiker jadi gambar.
+
+*Change Author*
+  Reply stiker + .author [nama]
+  Ganti nama author stiker.
 
 *Cuaca*
   .cuaca [kota]
