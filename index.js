@@ -30,6 +30,8 @@ const logger = pino({ level: 'silent' });
 
 // State per-user untuk autosticker
 const autoStickerUsers = new Map();
+// State per-grup untuk ON/OFF bot
+const groupBotActive = new Map();
 const AUTH_DIR = 'auth_info';
 const SESSION_FILE = path.join(AUTH_DIR, '.session_created');
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 hari dalam ms
@@ -220,6 +222,37 @@ async function handleMessage(sock, msg) {
             if (isQuotedVideo) return await downloadQuotedMedia(quotedMsg.videoMessage, 'video');
         }
         return null;
+    }
+
+    // ═══ DETEKSI GROUP vs PRIVATE CHAT ═══
+    const isGroup = jid.endsWith('@g.us');
+
+    // .on / .off hanya untuk grup
+    if (isGroup && caption) {
+        const cmd = caption.toLowerCase().trim();
+
+        if (cmd === '.on') {
+            groupBotActive.set(jid, true);
+            log.chat(jid, 'Bot AKTIF di grup');
+            await sock.sendMessage(jid, {
+                text: '✅ Bot telah *diaktifkan* untuk grup ini.\nSemua perintah sekarang bisa digunakan.'
+            }, { quoted: msg });
+            return;
+        }
+
+        if (cmd === '.off') {
+            groupBotActive.set(jid, false);
+            log.chat(jid, 'Bot NONAKTIF di grup');
+            await sock.sendMessage(jid, {
+                text: '✅ Bot telah *dinonaktifkan* untuk grup ini.\nKetik *.on* untuk mengaktifkan kembali.'
+            }, { quoted: msg });
+            return;
+        }
+    }
+
+    // Jika grup dan bot belum diaktifkan, abaikan semua pesan
+    if (isGroup && !groupBotActive.get(jid)) {
+        return;
     }
 
     // ═══ STIKER TO IMAGE (.toimg) ═══
