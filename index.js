@@ -18,7 +18,7 @@ const { parseDuration, setReminder, cancelReminder, getReminders, formatRemainin
 const { textToSpeech } = require('./lib/tts');
 const { downloadMedia, downloadImage, detectPlatform, formatDuration } = require('./lib/downloader');
 const { chat: geminiChat, resetChat: geminiReset, analyzeImage: geminiAnalyzeImage, analyzeWebsite: geminiAnalyzeWebsite } = require('./lib/gemini');
-const { listCharacters, findCharacter, setUserPersonality, getUserPersonality, resetUserPersonality } = require('./lib/personality');
+const { listCharacters, findCharacter, getCharacterInfo, setUserPersonality, getUserPersonality, resetUserPersonality } = require('./lib/personality');
 const log = require('./lib/logger');
 
 // ══════════════════════════════════════════════
@@ -246,13 +246,13 @@ async function handleMessage(sock, msg) {
         return;
     }
 
-    // ═══ CHANGE STIKER AUTHOR (.author) ═══
-    if (caption && caption.toLowerCase().startsWith('.author') && isQuotedSticker) {
-        const newAuthor = caption.slice(7).trim();
+    // ═══ CHANGE STIKER AUTHOR (.setauthor) ═══
+    if (caption && caption.toLowerCase().startsWith('.setauthor') && isQuotedSticker) {
+        const newAuthor = caption.slice(10).trim();
 
         if (!newAuthor) {
             await sock.sendMessage(jid, {
-                text: '❌ Masukkan nama author!\n\nContoh: Reply stiker + ketik *.author Nama Kamu*'
+                text: '❌ Masukkan nama author!\n\nContoh: Reply stiker + ketik *.setauthor Nama Kamu*'
             }, { quoted: msg });
             return;
         }
@@ -707,9 +707,9 @@ async function handleMessage(sock, msg) {
         }
     }
 
-    // ═══ PERSONALITY COMMAND ═══
-    if (caption && caption.toLowerCase().startsWith('.personality')) {
-        const arg = caption.slice(12).trim();
+    // ═══ SET CHARACTER (.setchar) ═══
+    if (caption && caption.toLowerCase().startsWith('.setchar')) {
+        const arg = caption.slice(8).trim();
 
         // Reset ke default
         if (arg.toLowerCase() === 'reset') {
@@ -717,22 +717,10 @@ async function handleMessage(sock, msg) {
             resetUserPersonality(jid);
             geminiReset(jid);
             const def = getUserPersonality(jid);
-            log.chat(jid, 'Personality reset');
+            log.chat(jid, 'Setchar reset');
             await sock.sendMessage(jid, {
-                text: `✅ Personality direset ke *${def.name}* (Default)${!old.isDefault ? `\n\nSebelumnya: *${old.name}*` : ''}`
+                text: `✅ Karakter direset ke *${def.name}* (Default)${!old.isDefault ? `\n\nSebelumnya: *${old.name}*` : ''}`
             }, { quoted: msg });
-            return;
-        }
-
-        // List semua karakter
-        if (arg.toLowerCase() === 'list') {
-            const chars = listCharacters();
-            let text = `Karakter tersedia:\n\n`;
-            chars.forEach(c => {
-                text += `  *${c.name}*${c.isDefault ? ' (default)' : ''}\n`;
-            });
-            text += `\nKetik *.personality [nama]* untuk ganti.`;
-            await sock.sendMessage(jid, { text }, { quoted: msg });
             return;
         }
 
@@ -740,13 +728,12 @@ async function handleMessage(sock, msg) {
         if (!arg) {
             const current = getUserPersonality(jid);
             const chars = listCharacters();
-            let text = `Personality saat ini: *${current.name}*${current.isDefault ? ' (default)' : ''}\n\n`;
-            text += `Karakter tersedia:\n`;
+            let text = `Karakter saat ini: *${current.name}*${current.isDefault ? ' (default)' : ''}\n\nKarakter tersedia:\n`;
             chars.forEach(c => {
                 const active = c.key === current.key ? ' ◀' : '';
-                text += `  *${c.name}*${c.isDefault ? ' (default)' : ''}${active}\n`;
+                text += `└ · *${c.name}*${c.isDefault ? ' (default)' : ''}${active}\n`;
             });
-            text += `\n.personality [nama] \u2014 ganti karakter\n.personality reset \u2014 kembali ke default\n.personality list \u2014 lihat semua`;
+            text += `\nKetik *.setchar [nama]* untuk ganti.`;
             await sock.sendMessage(jid, { text }, { quoted: msg });
             return;
         }
@@ -757,7 +744,7 @@ async function handleMessage(sock, msg) {
             const chars = listCharacters();
             let text = `❌ Karakter *${arg}* tidak ditemukan.\n\nKarakter tersedia:\n`;
             chars.forEach(c => {
-                text += `  *${c.name}*${c.isDefault ? ' (default)' : ''}\n`;
+                text += `└ · *${c.name}*${c.isDefault ? ' (default)' : ''}\n`;
             });
             await sock.sendMessage(jid, { text }, { quoted: msg });
             return;
@@ -767,10 +754,43 @@ async function handleMessage(sock, msg) {
         setUserPersonality(jid, found.key);
         geminiReset(jid);
 
-        log.done(jid, `Personality: ${found.name}`);
+        log.done(jid, `Setchar: ${found.name}`);
         await sock.sendMessage(jid, {
-            text: `✅ Personality berhasil diganti!\n\nDari: *${old.name}*\nKe: *${found.name}*\n\nKetik *.personality reset* untuk kembali ke default.`
+            text: `✅ Karakter berhasil diganti!\n\nDari: *${old.name}*\nKe: *${found.name}*\n\nKetik *.setchar reset* untuk kembali ke default.`
         }, { quoted: msg });
+        return;
+    }
+
+    // ═══ CHARACTER INFO (.charinfo) ═══
+    if (caption && caption.toLowerCase().startsWith('.charinfo')) {
+        const arg = caption.slice(9).trim();
+
+        if (!arg) {
+            await sock.sendMessage(jid, {
+                text: '❌ Masukkan nama karakter!\n\nContoh: *.charinfo mita*'
+            }, { quoted: msg });
+            return;
+        }
+
+        const info = getCharacterInfo(arg);
+        if (!info) {
+            const chars = listCharacters();
+            let text = `❌ Karakter *${arg}* tidak ditemukan.\n\nKarakter tersedia:\n`;
+            chars.forEach(c => {
+                text += `└ · *${c.name}*\n`;
+            });
+            await sock.sendMessage(jid, { text }, { quoted: msg });
+            return;
+        }
+
+        let text = `┌─────────────────────────┐\n`;
+        text += `│   *${info.name.toUpperCase()}*   │\n`;
+        text += `└─────────────────────────┘\n\n`;
+        text += `*Appearance:*\n${info.appearance}\n\n`;
+        text += `*Personality:*\n${info.personality}`;
+
+        await sock.sendMessage(jid, { text }, { quoted: msg });
+        log.done(jid, `Charinfo: ${info.name}`);
         return;
     }
 
@@ -995,77 +1015,30 @@ async function handleMessage(sock, msg) {
 
     // Menu / help command
     if (caption && (caption.toLowerCase() === '.menu' || caption.toLowerCase() === '.help')) {
-        const menuText = `┌─────────────────────────┐
-│      *CHATBOT VA*       │
-└─────────────────────────┘
+        const now = new Date();
+        const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+        const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        const jam = now.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour12: false });
+        const hari = days[now.getDay()];
+        const tgl = `${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
 
-*Stiker*
-  .stiker / .sticker
-  Kirim gambar atau video
-  (maks 5 detik) dengan
-  caption ini.
-  Reply gambar/video juga bisa.
+        const botNumber = (sock.user?.id || '').split(':')[0] + '@s.whatsapp.net';
+        const userNumber = jid;
+        const botTag = '@' + (sock.user?.id || '').split(':')[0];
+        const userTag = '@' + jid.split('@')[0];
 
-*Autosticker*
-  .autosticker on  \u2014 aktifkan
-  .autosticker off \u2014 nonaktifkan
+        const chars = listCharacters();
+        let charList = '';
+        chars.forEach(c => {
+            charList += `└ · ${c.name}${c.isDefault ? ' (default)' : ''}\n`;
+        });
 
-*Stiker to Image*
-  Reply stiker + ketik .toimg
-  Convert stiker jadi gambar.
-
-*Change Author*
-  Reply stiker + .author [nama]
-  Ganti nama author stiker.
-
-*Cuaca*
-  .cuaca [kota]
-  Contoh: .cuaca Jakarta
-
-*QR Code*
-  .qr [teks/url]
-  Contoh: .qr https://google.com
-
-*Reminder*
-  .ingatkan [durasi] [pesan]
-  .listreminder
-  .hapusreminder [id]
-  Contoh: .ingatkan 30m Makan
-
-*Text-to-Speech*
-  .tts [teks]
-  Contoh: .tts Halo selamat pagi
-
-*Download Media*
-  .dl [url]  — download video
-  .mp3 [url] — download audio
-  .jpg [url] — download gambar
-  Support: YT, IG, TT, FB, X
-
-*AI Chat*
-  .ai [pesan]
-  .resetai — reset riwayat
-
-*Personality*
-  .personality [nama]
-  .personality list
-  .personality reset
-  Ganti karakter AI.
-
-*Analyze*
-  .analyzeimg — jelaskan gambar
-  .analyzeweb [url] — analisis web
-
-*Lainnya*
-  .ping — cek jaringan
-  .menu / .help
-
-──────────────────────
-  Copyright VA 2026`;
+        const menuText = `Hai, aku ${botTag} \nJadi apa yang bisa saya bantu ${userTag} \ud83d\ude0a\n\n┌ • Jam: ${jam} WIB\n└ • Tanggal: ${hari}, ${tgl}\n\n*• DAFTAR PERINTAH •*\n└ • .stiker / .sticker / .s\n└ • .autosticker on/off\n└ • .toimg\n└ • .setauthor [nama]\n└ • .analyzeweb [url]\n└ • .analyzeimg\n└ • .setchar [nama]\n└ • .charinfo [nama]\n└ • .cuaca [kota]\n└ • .qr [teks/url]\n└ • .tts [teks]\n└ • .dl [url]\n└ • .mp3 [url]\n└ • .jpg [url]\n└ • .ingatkan [durasi] [pesan]\n└ • .ai [pesan]\n└ • .resetai\n└ • .ping\n\n*• DAFTAR KARAKTER •*\n<--- *Mita Variations* --->\n${charList}\n*Panduan:* gunakan perintah \`.setchar\` untuk mengganti karakter pada list daftar karakter`;
 
         await sock.sendMessage(jid, {
             image: { url: 'https://d2vrvpw63099lz.cloudfront.net/whatsapp-bots/whatsapp-bots.png' },
             caption: menuText,
+            mentions: [botNumber, userNumber],
             mimetype: 'image/png'
         }, { quoted: msg });
     }
