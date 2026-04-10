@@ -51,6 +51,8 @@ echo "════════════════════════�
 echo "  ✅ Setup selesai!"
 echo "══════════════════════════════════════"
 echo ""
+echo "Ulangi instalasi node-gyp dan node-addon-api jika ada error"
+echo ""
 echo "Jalankan bot dengan:"
 echo "  node index.js"
 echo ""
