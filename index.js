@@ -351,7 +351,7 @@ async function handleMessage(sock, msg) {
         try {
             const buffer = await downloadMediaMessage(msg, 'buffer', {});
             const stickerBuffer = await createSticker(buffer);
-            await sock.sendMessage(jid, { sticker: stickerBuffer }, { quoted: msg });
+            await sock.sendMessage(jid, { sticker: stickerBuffer });
             await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
             log.done(jid, `Autosticker #${data.count} dikirim`);
         } catch (err) {
