@@ -389,10 +389,10 @@ async function handleMessage(sock, msg) {
             : (quotedMsg?.videoMessage?.seconds || 0);
         log.chat(jid, 'GIF stiker', `${videoDuration}s${isQuotedVideo ? ' via reply' : ''}`);
 
-        if (videoDuration > 5) {
+        if (videoDuration > 10) {
             await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
             await sock.sendMessage(jid, {
-                text: '❌ Video terlalu panjang! Maksimal *5 detik* untuk GIF stiker.'
+                text: '❌ Video terlalu panjang! Maksimal *10 detik* untuk GIF stiker.'
             }, { quoted: msg });
             return;
         }
